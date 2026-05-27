@@ -62,3 +62,16 @@ def test_substitute_no_tokens_passthrough() -> None:
 def test_substitute_empty_value_allowed() -> None:
     out = substitute("sdk={{SDK_VERSION_OVERRIDE}}", {"SDK_VERSION_OVERRIDE": ""})
     assert out == "sdk="
+
+
+from render import sha256_hex
+
+
+def test_sha256_hex_empty() -> None:
+    assert sha256_hex(b"") == "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+
+
+def test_sha256_hex_known_string() -> None:
+    assert sha256_hex(b"abc") == (
+        "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+    )

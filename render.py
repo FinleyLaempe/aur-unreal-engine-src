@@ -7,6 +7,7 @@ Public surface (must match the JS port embedded in n8n Code node 7):
 
 from __future__ import annotations
 
+import hashlib
 import re
 import tomllib
 from dataclasses import dataclass, field
@@ -52,3 +53,7 @@ def substitute(template: str, values: dict[str, str]) -> str:
         return values[token]
 
     return _TOKEN_RE.sub(_replace, template)
+
+
+def sha256_hex(data: bytes) -> str:
+    return hashlib.sha256(data).hexdigest()
