@@ -1,0 +1,4 @@
+sdk_version_override = ""
+pkgrel = 1
+patches = []
+notes = "Bootstrap stub. No patches verified for 5.5 yet; build likely fails until patches are added."

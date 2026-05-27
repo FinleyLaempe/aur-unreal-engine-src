@@ -1,0 +1,7 @@
+sdk_version_override = ""
+pkgrel = 1
+patches = [
+  "0001-override-shared-target-build.patch",
+  "0002-suppress-scriptbuild-warnings-for-5-6.patch",
+]
+notes = "5.6.x patches inherited from upstream maintainer (Alexis Belmonte). Verified against 5.6.1-release."

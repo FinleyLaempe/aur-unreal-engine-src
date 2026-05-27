@@ -1,0 +1,27 @@
+# Untracked raw source material from upstream AUR maintainer's tree.
+# Kept locally as reference during templating; will be replaced by *.tmpl
+# files (committed) once the implementation plan converts them.
+templates/_common/*.raw
+templates/5.6/PKGBUILD.upstream
+
+# Renderer output
+out/
+*.pkg.tar.zst
+*.pkg.tar.xz
+
+# Local scratch
+/tmp/
+*.swp
+*.orig
+*.rej
+
+# Python (renderer)
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+
+# Editor / OS noise
+.vscode/
+.idea/
+.DS_Store
