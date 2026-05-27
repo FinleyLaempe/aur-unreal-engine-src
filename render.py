@@ -57,3 +57,28 @@ def substitute(template: str, values: dict[str, str]) -> str:
 
 def sha256_hex(data: bytes) -> str:
     return hashlib.sha256(data).hexdigest()
+
+
+_MINOR_RE = re.compile(r"^(\d+)\.(\d+)$")
+
+
+def derive_values(
+    minor: str, pkgver: str, pkgrel: int, sdk_override: str
+) -> dict[str, str]:
+    if not _MINOR_RE.match(minor):
+        raise ValueError(f"invalid minor (expected 'X.Y'): {minor!r}")
+    minor_underscore = minor.replace(".", "_")
+    pkgname = f"unreal-engine-src-{minor}"
+    launcher_bin = f"unreal-engine-{minor}"
+    symlinks = f"ue{minor} UE{minor}"
+    return {
+        "PKGNAME": pkgname,
+        "MINOR": minor,
+        "MINOR_UNDERSCORE": minor_underscore,
+        "PKGVER": pkgver,
+        "PKGREL": str(pkgrel),
+        "SDK_VERSION_OVERRIDE": sdk_override,
+        "INSTALL_DIR": f"opt/{pkgname}",
+        "LAUNCHER_BIN": launcher_bin,
+        "SYMLINKS": symlinks,
+    }

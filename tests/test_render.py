@@ -75,3 +75,41 @@ def test_sha256_hex_known_string() -> None:
     assert sha256_hex(b"abc") == (
         "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
     )
+
+
+from render import derive_values
+
+
+def test_derive_values_5_6() -> None:
+    v = derive_values(minor="5.6", pkgver="5.6.1", pkgrel=1, sdk_override="")
+    assert v["PKGNAME"] == "unreal-engine-src-5.6"
+    assert v["MINOR"] == "5.6"
+    assert v["MINOR_UNDERSCORE"] == "5_6"
+    assert v["PKGVER"] == "5.6.1"
+    assert v["PKGREL"] == "1"
+    assert v["SDK_VERSION_OVERRIDE"] == ""
+    assert v["INSTALL_DIR"] == "opt/unreal-engine-src-5.6"
+    assert v["LAUNCHER_BIN"] == "unreal-engine-5.6"
+    assert v["SYMLINKS"] == "ue5.6 UE5.6"
+
+
+def test_derive_values_5_0_with_sdk_override() -> None:
+    v = derive_values(
+        minor="5.0",
+        pkgver="5.0.3",
+        pkgrel=2,
+        sdk_override="v22_clang-16.0.6-centos7",
+    )
+    assert v["MINOR_UNDERSCORE"] == "5_0"
+    assert v["PKGREL"] == "2"
+    assert v["SDK_VERSION_OVERRIDE"] == "v22_clang-16.0.6-centos7"
+    assert v["LAUNCHER_BIN"] == "unreal-engine-5.0"
+
+
+def test_derive_values_rejects_bad_minor() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="invalid minor"):
+        derive_values(minor="5", pkgver="5.0.0", pkgrel=1, sdk_override="")
+    with pytest.raises(ValueError, match="invalid minor"):
+        derive_values(minor="5.6.1", pkgver="5.6.1", pkgrel=1, sdk_override="")
