@@ -30,3 +30,35 @@ def test_load_minor_meta_5_0_empty_patches(templates_dir: Path) -> None:
 def test_load_minor_meta_missing_dir(tmp_path: Path) -> None:
     with pytest.raises(FileNotFoundError):
         load_minor_meta(tmp_path / "5.99")
+
+
+from render import substitute
+
+
+def test_substitute_single_token() -> None:
+    out = substitute("hello {{NAME}}", {"NAME": "world"})
+    assert out == "hello world"
+
+
+def test_substitute_multiple_tokens() -> None:
+    out = substitute(
+        "{{PKGNAME}}-{{PKGVER}}",
+        {"PKGNAME": "unreal-engine-src-5.6", "PKGVER": "5.6.1"},
+    )
+    assert out == "unreal-engine-src-5.6-5.6.1"
+
+
+def test_substitute_unreplaced_token_raises() -> None:
+    import pytest
+
+    with pytest.raises(ValueError, match="unsubstituted token"):
+        substitute("hello {{NAME}}", {})
+
+
+def test_substitute_no_tokens_passthrough() -> None:
+    assert substitute("plain text", {}) == "plain text"
+
+
+def test_substitute_empty_value_allowed() -> None:
+    out = substitute("sdk={{SDK_VERSION_OVERRIDE}}", {"SDK_VERSION_OVERRIDE": ""})
+    assert out == "sdk="

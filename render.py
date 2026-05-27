@@ -7,6 +7,7 @@ Public surface (must match the JS port embedded in n8n Code node 7):
 
 from __future__ import annotations
 
+import re
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,3 +33,22 @@ def load_minor_meta(minor_dir: Path) -> MinorMeta:
         patches=list(raw.get("patches", [])),
         notes=raw.get("notes", ""),
     )
+
+
+_TOKEN_RE = re.compile(r"\{\{([A-Z][A-Z0-9_]*)\}\}")
+
+
+def substitute(template: str, values: dict[str, str]) -> str:
+    """Replace {{TOKEN}} with values[TOKEN]. Raises if any token is unmatched.
+
+    Empty string values are allowed (used for optional placeholders like
+    SDK_VERSION_OVERRIDE which defaults to empty).
+    """
+
+    def _replace(match: re.Match[str]) -> str:
+        token = match.group(1)
+        if token not in values:
+            raise ValueError(f"unsubstituted token: {{{{{token}}}}}")
+        return values[token]
+
+    return _TOKEN_RE.sub(_replace, template)
