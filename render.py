@@ -199,9 +199,10 @@ def render(
     source_order.append((icon_name, files[icon_name]))
 
     quoted_sources = "\n        ".join(f"'{name}'" for name, _ in source_order)
-    quoted_hashes = "\n            ".join(
-        f"'{sha256_hex(content)}'" for _, content in source_order
-    )
+    # All non-toolchain sources are locally rendered files; integrity is established
+    # by the templating + golden-file test, not sha256sums. Using SKIP also keeps the
+    # n8n JS port simple (its Code-node sandbox blocks the crypto module).
+    quoted_hashes = "\n            ".join("'SKIP'" for _ in source_order)
     values["PATCH_SOURCES"] = quoted_sources
     values["NON_TOOLCHAIN_SHA256_LIST"] = quoted_hashes
 
@@ -215,7 +216,7 @@ def render(
         pkgver=pkgver,
         pkgrel=meta.pkgrel,
         source_filenames=[name for name, _ in source_order],
-        source_hashes=[sha256_hex(content) for _, content in source_order],
+        source_hashes=["SKIP" for _ in source_order],
     ).encode("utf-8")
 
     return RenderedFiles(

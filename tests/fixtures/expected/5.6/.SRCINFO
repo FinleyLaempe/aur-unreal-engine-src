@@ -50,11 +50,11 @@ pkgbase = unreal-engine-src-5.6
 	source = 0002-suppress-scriptbuild-warnings-for-5-6.patch
 	source = unreal-engine-src-5.6-pacman-cache.hook
 	source = ue5_6editor.svg
-	sha256sums = 1a660833c9e070db982e29521d9114002e0259e66a22b9da38afd27a9228a60a
-	sha256sums = 1d980d6878c6c80836ac1a3a9d875d86cddd1f0e91b197825fd79a8132cd1347
-	sha256sums = cd512e3fc08aaaa783e8df4a6dcb567a35502c32a6cedf8d4d71ebfa75272735
-	sha256sums = e01efe8559076f977c44ab656432a3c8e793e4c7f2b42855f736a08b6f551cf1
-	sha256sums = 9a1d1b4ba09e92ad34dbddcde2d030735fb32e7e8308ac121f723c79c2907b2c
-	sha256sums = b00c398b63f15084c46f3963f62a45284ecd8dae9ba6f38a2c4af370bbfdab8d
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
+	sha256sums = SKIP
 
 pkgname = unreal-engine-src-5.6
