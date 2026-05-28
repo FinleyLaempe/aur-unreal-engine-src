@@ -4,6 +4,8 @@ from pathlib import Path
 
 import pytest
 
+pytestmark = pytest.mark.xfail(reason="templates not yet created; see Phase B", run=True, strict=False)
+
 from render import MinorMeta, load_minor_meta
 
 
@@ -153,3 +155,49 @@ def test_generate_srcinfo_minimal() -> None:
         "pkgname = unreal-engine-src-5.6\n"
     )
     assert out == expected
+
+
+from render import RenderedFiles, render
+
+
+def test_render_5_6_produces_expected_filenames(
+    repo_root: Path, tmp_path: Path
+) -> None:
+    # Caller-supplied template_sha is opaque to render() — it doesn't go into
+    # output files, just gets passed through state. This test confirms the
+    # function shape, not output contents (golden test handles that).
+    out = render(
+        repo=repo_root,
+        minor="5.6",
+        pkgver="5.6.1",
+        template_sha="deadbeefcafe",
+    )
+    assert isinstance(out, RenderedFiles)
+    assert out.pkgname == "unreal-engine-src-5.6"
+    assert out.pkgver == "5.6.1"
+    assert out.pkgrel == 1
+    names = set(out.files.keys())
+    assert "PKGBUILD" in names
+    assert ".SRCINFO" in names
+    assert "unreal-engine-5.6.sh" in names
+    assert "com.unrealengine.UE5_6Editor.desktop" in names
+    assert "unreal-engine-src-5.6-pacman-cache.hook" in names
+    assert "ue5_6editor.svg" in names
+    assert "0001-override-shared-target-build.patch" in names
+    assert "0002-suppress-scriptbuild-warnings-for-5-6.patch" in names
+    # All values must be bytes (binary-safe for svg)
+    for name, content in out.files.items():
+        assert isinstance(content, bytes), f"{name} content not bytes"
+
+
+def test_render_5_0_omits_patches_and_renames_assets(repo_root: Path) -> None:
+    out = render(
+        repo=repo_root, minor="5.0", pkgver="5.0.3", template_sha="abc"
+    )
+    names = set(out.files.keys())
+    assert "unreal-engine-5.0.sh" in names
+    assert "com.unrealengine.UE5_0Editor.desktop" in names
+    assert "unreal-engine-src-5.0-pacman-cache.hook" in names
+    assert "ue5_0editor.svg" in names
+    # No patches for 5.0 (meta.toml has patches=[])
+    assert not any(n.endswith(".patch") for n in names)

@@ -121,3 +121,158 @@ def generate_srcinfo(fields: dict[str, object]) -> str:
     lines.append("")
     lines.append(f"pkgname = {fields['pkgname']}")
     return "\n".join(lines) + "\n"
+
+
+@dataclass(frozen=True)
+class RenderedFiles:
+    pkgname: str
+    pkgver: str
+    pkgrel: int
+    template_sha: str
+    files: dict[str, bytes]
+
+
+def _read_bytes(path: Path) -> bytes:
+    with path.open("rb") as f:
+        return f.read()
+
+
+def _read_text(path: Path) -> str:
+    return _read_bytes(path).decode("utf-8")
+
+
+def render(
+    *, repo: Path, minor: str, pkgver: str, template_sha: str
+) -> RenderedFiles:
+    minor_dir = repo / "templates" / minor
+    common_dir = repo / "templates" / "_common"
+    meta = load_minor_meta(minor_dir)
+    values = derive_values(
+        minor=minor,
+        pkgver=pkgver,
+        pkgrel=meta.pkgrel,
+        sdk_override=meta.sdk_version_override,
+    )
+
+    # Output filenames derived from values
+    launcher_name = f"{values['LAUNCHER_BIN']}.sh"
+    desktop_name = f"com.unrealengine.UE5_{values['MINOR_UNDERSCORE']}Editor.desktop"
+    hook_name = f"{values['PKGNAME']}-pacman-cache.hook"
+    icon_name = f"ue5_{values['MINOR_UNDERSCORE']}editor.svg"
+
+    files: dict[str, bytes] = {}
+
+    # Templated common assets
+    files[launcher_name] = substitute(
+        _read_text(common_dir / "unreal-engine.sh.tmpl"), values
+    ).encode("utf-8")
+    files[desktop_name] = substitute(
+        _read_text(common_dir / "com.unrealengine.UE5Editor.desktop.tmpl"), values
+    ).encode("utf-8")
+    files[hook_name] = substitute(
+        _read_text(common_dir / "unreal-engine-5-pacman-cache.hook.tmpl"), values
+    ).encode("utf-8")
+    # Binary asset, copied verbatim with renamed filename
+    files[icon_name] = _read_bytes(common_dir / "ue5editor.svg")
+
+    # Per-minor patches (copied verbatim, included in source=())
+    patch_filenames: list[str] = []
+    for patch in meta.patches:
+        patch_path = minor_dir / "patches" / patch
+        if not patch_path.is_file():
+            raise FileNotFoundError(
+                f"patch listed in meta.toml not found: {patch_path}"
+            )
+        files[patch] = _read_bytes(patch_path)
+        patch_filenames.append(patch)
+
+    # Build source=() and sha256sums=() in lockstep
+    source_order: list[tuple[str, bytes]] = [
+        (launcher_name, files[launcher_name]),
+        (desktop_name, files[desktop_name]),
+    ]
+    for p in patch_filenames:
+        source_order.append((p, files[p]))
+    source_order.append((hook_name, files[hook_name]))
+    source_order.append((icon_name, files[icon_name]))
+
+    quoted_sources = "\n        ".join(f"'{name}'" for name, _ in source_order)
+    quoted_hashes = "\n            ".join(
+        f"'{sha256_hex(content)}'" for _, content in source_order
+    )
+    values["PATCH_SOURCES"] = quoted_sources
+    values["NON_TOOLCHAIN_SHA256_LIST"] = quoted_hashes
+
+    # Render PKGBUILD
+    pkgbuild_tmpl = _read_text(repo / "PKGBUILD.tmpl")
+    files["PKGBUILD"] = substitute(pkgbuild_tmpl, values).encode("utf-8")
+
+    # Generate .SRCINFO from extracted PKGBUILD fields
+    files[".SRCINFO"] = _build_srcinfo(
+        pkgname=values["PKGNAME"],
+        pkgver=pkgver,
+        pkgrel=meta.pkgrel,
+        source_filenames=[name for name, _ in source_order],
+        source_hashes=[sha256_hex(content) for _, content in source_order],
+    ).encode("utf-8")
+
+    return RenderedFiles(
+        pkgname=values["PKGNAME"],
+        pkgver=pkgver,
+        pkgrel=meta.pkgrel,
+        template_sha=template_sha,
+        files=files,
+    )
+
+
+def _build_srcinfo(
+    *,
+    pkgname: str,
+    pkgver: str,
+    pkgrel: int,
+    source_filenames: list[str],
+    source_hashes: list[str],
+) -> str:
+    fields: dict[str, object] = {
+        "pkgbase": pkgname,
+        "pkgdesc": "A 3D game engine by Epic Games which can be used non-commercially for free.",
+        "pkgver": pkgver,
+        "pkgrel": str(pkgrel),
+        "url": "https://www.unrealengine.com/",
+        "arch": ["x86_64", "x86_64_v2", "x86_64_v3", "x86_64_v4", "aarch64"],
+        "license": ["custom:UnrealEngine", "GPL3"],
+        "makedepends": ["git", "openssh", "sed", "grep", "glibc", "wget", "rsync"],
+        "depends": [
+            "sdl3",
+            "python",
+            "dotnet-runtime",
+            "dotnet-sdk",
+            "vulkan-icd-loader",
+            "lld",
+            "xdg-user-dirs",
+            "dos2unix",
+            "openssl",
+            "steam",
+            "coreutils",
+            "findutils",
+        ],
+        "optdepends": [
+            "polly: for potentially increased performance",
+            "qt5-base: qmake build system for projects",
+            "cmake: build system for projects",
+            "qtcreator: IDE for projects",
+            "codelite: IDE for projects",
+            "kdevelop: IDE for projects",
+            "clion: IDE for projects",
+            "rider: IDE for projects",
+            "code: IDE for projects",
+            "pacman-contrib: for the paccache cleaning hook",
+            'fake-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects',
+            'ttf-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects',
+        ],
+        "options": ["!strip", "staticlibs"],
+        "source": source_filenames,
+        "sha256sums": source_hashes,
+        "pkgname": pkgname,
+    }
+    return generate_srcinfo(fields)
