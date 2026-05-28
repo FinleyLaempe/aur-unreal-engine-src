@@ -7,8 +7,10 @@ Public surface (must match the JS port embedded in n8n Code node 7):
 
 from __future__ import annotations
 
+import argparse
 import hashlib
 import re
+import sys
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -276,3 +278,45 @@ def _build_srcinfo(
         "pkgname": pkgname,
     }
     return generate_srcinfo(fields)
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        description="Render a per-minor UE5 AUR package."
+    )
+    parser.add_argument("minor", help="Minor version, e.g. '5.6'")
+    parser.add_argument("--pkgver", required=True, help="e.g. '5.6.1'")
+    parser.add_argument(
+        "--template-sha",
+        default="local",
+        help="Template repo commit SHA (passed through to state).",
+    )
+    parser.add_argument(
+        "--repo",
+        type=Path,
+        default=Path(__file__).resolve().parent,
+        help="Template repo root (default: dir containing render.py).",
+    )
+    parser.add_argument(
+        "--out", type=Path, required=True, help="Output directory."
+    )
+    args = parser.parse_args(argv)
+
+    rendered = render(
+        repo=args.repo,
+        minor=args.minor,
+        pkgver=args.pkgver,
+        template_sha=args.template_sha,
+    )
+    args.out.mkdir(parents=True, exist_ok=True)
+    for name, content in rendered.files.items():
+        (args.out / name).write_bytes(content)
+    print(
+        f"Rendered {rendered.pkgname}-{rendered.pkgver}-{rendered.pkgrel} "
+        f"({len(rendered.files)} files) -> {args.out}"
+    )
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

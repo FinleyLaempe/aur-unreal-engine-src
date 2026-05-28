@@ -201,3 +201,29 @@ def test_render_5_0_omits_patches_and_renames_assets(repo_root: Path) -> None:
     assert "ue5_0editor.svg" in names
     # No patches for 5.0 (meta.toml has patches=[])
     assert not any(n.endswith(".patch") for n in names)
+
+
+import subprocess
+import sys
+
+
+def test_cli_writes_output_directory(repo_root: Path, tmp_path: Path) -> None:
+    out_dir = tmp_path / "out-5.6"
+    result = subprocess.run(
+        [
+            sys.executable,
+            str(repo_root / "render.py"),
+            "5.6",
+            "--pkgver",
+            "5.6.1",
+            "--template-sha",
+            "testsha",
+            "--out",
+            str(out_dir),
+        ],
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert (out_dir / "PKGBUILD").is_file()
+    assert (out_dir / ".SRCINFO").is_file()
