@@ -238,12 +238,32 @@ esac
 export DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
 
 prepare() {
-  # Check access to the repository
-  if ! git ls-remote git@github.com:EpicGames/UnrealEngine &>/dev/null; then
-    error 'You must register at unrealengine.com and link your github account to access this private repo. See the wiki for more info: https://wiki.archlinux.org/index.php/Unreal_Engine_4'
+  # --- Probe GitHub access (SSH first, HTTPS fallback) ---
+  local _ue_remote_ssh="git@github.com:EpicGames/UnrealEngine.git"
+  local _ue_remote_https="https://github.com/EpicGames/UnrealEngine.git"
+  local _ue_remote=""
+
+  msg "Probing GitHub access to EpicGames/UnrealEngine..."
+  if git ls-remote "${_ue_remote_ssh}" &>/dev/null; then
+    _ue_remote="${_ue_remote_ssh}"
+    msg "  -> SSH OK, using ${_ue_remote}"
+  elif git ls-remote "${_ue_remote_https}" &>/dev/null; then
+    _ue_remote="${_ue_remote_https}"
+    msg "  -> SSH failed, HTTPS OK, using ${_ue_remote}"
+  else
+    error "Cannot access EpicGames/UnrealEngine via SSH or HTTPS."
+    error "You must:"
+    error "  1. Have a GitHub account linked to your Epic Games account:"
+    error "     https://www.unrealengine.com/en-US/ue-on-github"
+    error "  2. Accept the @EpicGames org invitation in your GitHub inbox."
+    error "  3. Configure either:"
+    error "     - SSH: 'ssh -T git@github.com' must succeed with your key"
+    error "     - HTTPS: 'gh auth login' or git credential helper with PAT (repo scope)"
+    error "Probed: ${_ue_remote_ssh} and ${_ue_remote_https}"
     exit 1
   fi
 
+  # --- Build config summary (preserved from upstream lines 255–311) ---
   local _ue_commit="not-cloned"
   local _ue_install_path="/${UE_INSTALL_DIR#/}"
   local _ue_arch_label="${_ue_build_arch:-unknown}"
@@ -257,7 +277,6 @@ prepare() {
   if [[ -d "${pkgname}/.git" ]]; then
     _ue_commit="$(git -C "${pkgname}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
   fi
-
   if [[ "${_ue_arch_label}" == "x64" ]]; then
     if [[ -n "${_ue_detected_march}" ]]; then
       _ue_arch_detail=" (${_ue_detected_march})"
@@ -273,23 +292,19 @@ prepare() {
       _ue_arch_detail=" (aarch64)"
     fi
   fi
-
   [[ "${UE_WITH_DDC}" == "true" ]]                  && _ue_ddc_text="yes"
   [[ "${UE_WITH_FULL_DEBUG_INFO}" == "true" ]]      && _ue_debug_text="yes"
   [[ "${UE_USE_DEFAULT_LOGO_AT_INSTALL}" == "0" ]]  && _ue_default_logo_text="no"
-
   [[ "${UE_WITH_WIN64}" == "true" ]]    && _ue_target_platforms+=("Windows")
   [[ "${UE_WITH_LINUX}" == "true" ]]    && _ue_target_platforms+=("Linux")
   [[ "${UE_WITH_MAC}" == "true" ]]      && _ue_target_platforms+=("macOS")
   [[ "${UE_WITH_TVOS}" == "true" ]]     && _ue_target_platforms+=("tvOS")
   [[ "${UE_WITH_ANDROID}" == "true" ]]  && _ue_target_platforms+=("Android")
   [[ "${UE_WITH_IOS}" == "true" ]]      && _ue_target_platforms+=("iOS")
-
   if (( ${#_ue_target_platforms[@]} > 0 )); then
     local IFS=", "
     _ue_platforms_csv="${_ue_target_platforms[*]}"
   fi
-
   msg ''
   msg "Unreal Engine ${pkgver} (commit ${_ue_commit}) build options summary:"
   msg ''
@@ -302,66 +317,84 @@ prepare() {
   msg "- Use default logo at install:              ${_ue_default_logo_text}"
   msg ''
 
-  # Download Unreal Engine source or update if the folder exists
-  if [[ ! -d "${pkgname}" ]]
-  then
-    git clone --depth=1 --branch=${pkgver}-release git@github.com:EpicGames/UnrealEngine "${pkgname}"
-    cd "${pkgname}" || return
+  # --- Clone or update UE5 source ---
+  if [[ ! -d "${pkgname}" ]]; then
+    git clone --depth=1 --branch="${_uetag}" "${_ue_remote}" "${pkgname}"
   else
-    cd "${pkgname}" || return
-    CURRENT_CLONED_VERSION="$(git describe --tags)"
-    if [[ "${CURRENT_CLONED_VERSION}" != "${pkgver}-release" ]]; then
-      cd ..
-      rm -rf "${pkgname}"
-      git clone --depth=1 --branch=${pkgver}-release git@github.com:EpicGames/UnrealEngine "${pkgname}"
-      cd "${pkgname}" || return
+    cd "${pkgname}"
+    if [[ "$(git describe --tags 2>/dev/null)" != "${_uetag}" ]]; then
+      cd .. && rm -rf "${pkgname}"
+      git clone --depth=1 --branch="${_uetag}" "${_ue_remote}" "${pkgname}"
     else
       rm -f .git/index.lock
-      git fetch --depth=1 origin tag ${pkgver}-release
-      git reset --hard ${pkgver}-release
+      git fetch --depth=1 origin tag "${_uetag}"
+      git reset --hard "${_uetag}"
+      cd ..
     fi
   fi
 
+  # --- Apply per-minor patches (continues on failure per upstream behaviour) ---
   for patch_file in ../*.patch; do
-    msg "Applying ${patch_file}" 
-
-    if ! patch -p1 -i "${patch_file}"; then
+    [[ -f "${patch_file}" ]] || continue
+    msg "Applying ${patch_file}"
+    if ! patch -p1 -d "${pkgname}" -i "${patch_file}"; then
       msg "Some or all of the patch at ${patch_file} failed to apply. Will still try to build."
     fi
   done
 
-  # Qt Creator source code access
-  if [[ ! -d Engine/Plugins/Developer/QtCreatorSourceCodeAccess ]]
-  then
-    # https://github.com/fire-archive/QtCreatorSourceCodeAccess - See for usage
+  cd "${pkgname}" || return
+
+  # --- Qt Creator source code access (preserved from upstream) ---
+  if [[ ! -d Engine/Plugins/Developer/QtCreatorSourceCodeAccess ]]; then
     git -C Engine/Plugins/Developer clone --depth=1 https://github.com/fire-archive/QtCreatorSourceCodeAccess
   fi
 
-  # For some reason, despite this file explicitly asking not to be removed, it was removed from the UE5 source; it has to be re-added or the build will fail
-  if [[ ! -f ${pkgname}/Engine/Source/ThirdParty/Linux/HaveLinuxDependencies ]]
-  then
-    mkdir -p "${srcdir}/${pkgname}/Engine/Source/ThirdParty/Linux/"
-    touch "${srcdir}/${pkgname}/Engine/Source/ThirdParty/Linux/HaveLinuxDependencies"
-    sed -i "1c\This file must have no extension so that GitDeps considers it a binary dependency - it will only be pulled by the Setup script if Linux is enabled. Please do not remove this file." "${srcdir}/${pkgname}/Engine/Source/ThirdParty/Linux/HaveLinuxDependencies"
+  # --- HaveLinuxDependencies marker (preserved from upstream) ---
+  if [[ ! -f Engine/Source/ThirdParty/Linux/HaveLinuxDependencies ]]; then
+    mkdir -p Engine/Source/ThirdParty/Linux/
+    touch Engine/Source/ThirdParty/Linux/HaveLinuxDependencies
+    sed -i "1c\This file must have no extension so that GitDeps considers it a binary dependency - it will only be pulled by the Setup script if Linux is enabled. Please do not remove this file." Engine/Source/ThirdParty/Linux/HaveLinuxDependencies
   fi
-  
-  # Ensure UVS registration is non-interactive during package builds.
+
+  # --- Setup.sh tweak for non-interactive UVS register (preserved) ---
   if [[ -f Setup.sh ]]; then
     sed -i 's#UnrealVersionSelector-Linux-Shipping -register > /dev/null &#UnrealVersionSelector-Linux-Shipping -register -unattended > /dev/null \&#' Setup.sh
   fi
 
   ./Setup.sh
-  cd "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/" || return
+  cd "${srcdir}" || return
 
-  ## This should just be working, but somehow isn't: https://aur.archlinux.org/packages/unreal-engine#comment-986166
-  #./Engine/Build/BatchFiles/Linux/SetupToolchain.sh
-  ## So, we're doing this instead:
+  # --- Resolve SDK_VERSION ---
+  local _sdk_ver="${_ue_sdk_override}"
+  if [[ -z "${_sdk_ver}" ]]; then
+    local _sdk_json="${srcdir}/${pkgname}/Engine/Config/Linux/Linux_SDK.json"
+    if [[ ! -f "${_sdk_json}" ]]; then
+      error "Cannot find ${_sdk_json}; cannot resolve SDK_VERSION."
+      exit 1
+    fi
+    _sdk_ver=$(grep -oE '"MainVersion"[[:space:]]*:[[:space:]]*"[^"]+"' "${_sdk_json}" | \
+               sed -E 's/.*"MainVersion"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+  fi
+  msg "Resolved SDK_VERSION=${_sdk_ver}"
+
+  # --- Download + extract toolchain ---
+  local _sdk_url="https://cdn.unrealengine.com/Toolchain_Linux/${_sdk_ver}.tar.gz"
+  local _sdk_tar="${srcdir}/${_sdk_ver}.tar.gz"
+  if [[ ! -f "${_sdk_tar}" ]]; then
+    msg "Downloading SDK toolchain from ${_sdk_url}"
+    curl -fL --retry 3 -o "${_sdk_tar}" "${_sdk_url}" || {
+      error "Failed to download SDK toolchain from ${_sdk_url}"
+      exit 1
+    }
+  fi
+
   mkdir -p "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
-  tar -xvf "${srcdir}/${UE_SDK_VERSION}.tar.gz" -C "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
+  tar -xf "${_sdk_tar}" -C "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
 
-  "${srcdir}"/"${pkgname}"/Engine/Build/BatchFiles/Linux/BuildThirdParty.sh
-  "${srcdir}"/"${pkgname}"/Engine/Build/BatchFiles/Linux/SetupDotnet.sh
-  "${srcdir}"/"${pkgname}"/Engine/Build/BatchFiles/Linux/FixDependencyFiles.sh
+  # --- Build third-party + dotnet setup (preserved from upstream) ---
+  "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/BuildThirdParty.sh"
+  "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/SetupDotnet.sh"
+  "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/FixDependencyFiles.sh"
 }
 
 build() {
