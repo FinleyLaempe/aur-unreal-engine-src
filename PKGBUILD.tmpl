@@ -1,17 +1,18 @@
-# Old Maintainer: Dylan Ferris <dylan@psilly.com>
-# Old Maintainer: Michael Lojkovic <mikelojkovic@gmail.com>
-# Old Maintainer: Shatur95 <genaloner@gmail.com>
-# Old Maintainer: slx
-# Old Co-Maintainer: Neko-san <nekoNexus at protonmail dot ch>
-# Maintainer: Alexis Belmonte <alexbelm48@gmail.com>
+# Inspired by Alexis Belmonte's <alexbelm48@gmail.com> upstream `unreal-engine` AUR
+# Per-minor parallel-install variant. Templates auto-published from:
+#   https://github.com/FinleyLaempe/aur-unreal-engine-src
+# Maintainer: Finley Laempe <finley.laempe@web.de>
 
 # The source is about 200 MiB, with an extra ~11 GiB of dependencies downloaded in Setup.sh, and may take several hours to compile.
 # If you want additional options, there are switches below.
-pkgname=unreal-engine
-pkgver=5.6.1
-pkgrel=1
-## Check unreal-engine/Engine/Config/Linux/Linux_SDK.json (MainVersion value) for what the below should be set to
-UE_SDK_VERSION="native-linux-v26_clang-20.1.8-rockylinux8"
+pkgname={{PKGNAME}}
+pkgver={{PKGVER}}
+pkgrel={{PKGREL}}
+_uetag="${pkgver}-release"
+_ueminor="{{MINOR}}"
+_ueminor_us="{{MINOR_UNDERSCORE}}"
+# Empty override = parse from cloned UE5 repo's Engine/Config/Linux/Linux_SDK.json at build time
+_ue_sdk_override="{{SDK_VERSION_OVERRIDE}}"
 pkgdesc='A 3D game engine by Epic Games which can be used non-commercially for free.'
 arch=('x86_64' 'x86_64_v2' 'x86_64_v3' 'x86_64_v4' 'aarch64')
 url=https://www.unrealengine.com/
