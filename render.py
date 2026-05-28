@@ -82,3 +82,42 @@ def derive_values(
         "LAUNCHER_BIN": launcher_bin,
         "SYMLINKS": symlinks,
     }
+
+
+_SCALAR_KEYS = ("pkgbase", "pkgdesc", "pkgver", "pkgrel", "url")
+_ARRAY_KEYS = (
+    "arch",
+    "license",
+    "makedepends",
+    "depends",
+    "optdepends",
+    "options",
+    "source",
+    "sha256sums",
+)
+
+
+def generate_srcinfo(fields: dict[str, object]) -> str:
+    """Build .SRCINFO from a flat field map.
+
+    Format mirrors `makepkg --printsrcinfo`: pkgbase first, then indented
+    scalar/array fields (one line per array element), blank line, pkgname.
+    """
+    lines: list[str] = []
+    lines.append(f"pkgbase = {fields['pkgbase']}")
+    for key in _SCALAR_KEYS:
+        if key == "pkgbase":
+            continue
+        value = fields.get(key)
+        if value is None:
+            continue
+        lines.append(f"\t{key} = {value}")
+    for key in _ARRAY_KEYS:
+        values = fields.get(key) or []
+        if not isinstance(values, list):
+            raise TypeError(f"{key} must be a list, got {type(values).__name__}")
+        for item in values:
+            lines.append(f"\t{key} = {item}")
+    lines.append("")
+    lines.append(f"pkgname = {fields['pkgname']}")
+    return "\n".join(lines) + "\n"

@@ -113,3 +113,43 @@ def test_derive_values_rejects_bad_minor() -> None:
         derive_values(minor="5", pkgver="5.0.0", pkgrel=1, sdk_override="")
     with pytest.raises(ValueError, match="invalid minor"):
         derive_values(minor="5.6.1", pkgver="5.6.1", pkgrel=1, sdk_override="")
+
+
+from render import generate_srcinfo
+
+
+def test_generate_srcinfo_minimal() -> None:
+    fields = {
+        "pkgbase": "unreal-engine-src-5.6",
+        "pkgdesc": "A 3D game engine by Epic Games.",
+        "pkgver": "5.6.1",
+        "pkgrel": "1",
+        "url": "https://www.unrealengine.com/",
+        "arch": ["x86_64", "aarch64"],
+        "license": ["custom:UnrealEngine", "GPL3"],
+        "depends": ["sdl3", "python"],
+        "source": ["unreal-engine.sh", "ue5_6editor.svg"],
+        "sha256sums": ["aaa", "bbb"],
+        "pkgname": "unreal-engine-src-5.6",
+    }
+    out = generate_srcinfo(fields)
+    expected = (
+        "pkgbase = unreal-engine-src-5.6\n"
+        "\tpkgdesc = A 3D game engine by Epic Games.\n"
+        "\tpkgver = 5.6.1\n"
+        "\tpkgrel = 1\n"
+        "\turl = https://www.unrealengine.com/\n"
+        "\tarch = x86_64\n"
+        "\tarch = aarch64\n"
+        "\tlicense = custom:UnrealEngine\n"
+        "\tlicense = GPL3\n"
+        "\tdepends = sdl3\n"
+        "\tdepends = python\n"
+        "\tsource = unreal-engine.sh\n"
+        "\tsource = ue5_6editor.svg\n"
+        "\tsha256sums = aaa\n"
+        "\tsha256sums = bbb\n"
+        "\n"
+        "pkgname = unreal-engine-src-5.6\n"
+    )
+    assert out == expected
