@@ -17,6 +17,7 @@ pkgbase = unreal-engine-src-5.6
 	makedepends = glibc
 	makedepends = wget
 	makedepends = rsync
+	makedepends = curl
 	depends = sdl3
 	depends = python
 	depends = dotnet-runtime

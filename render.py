@@ -243,7 +243,7 @@ def _build_srcinfo(
         "url": "https://www.unrealengine.com/",
         "arch": ["x86_64", "x86_64_v2", "x86_64_v3", "x86_64_v4", "aarch64"],
         "license": ["custom:UnrealEngine", "GPL3"],
-        "makedepends": ["git", "openssh", "sed", "grep", "glibc", "wget", "rsync"],
+        "makedepends": ["git", "openssh", "sed", "grep", "glibc", "wget", "rsync", "curl"],
         "depends": [
             "sdl3",
             "python",
