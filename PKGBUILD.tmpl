@@ -16,7 +16,7 @@ _ue_sdk_override="{{SDK_VERSION_OVERRIDE}}"
 pkgdesc='A 3D game engine by Epic Games which can be used non-commercially for free.'
 arch=('x86_64' 'x86_64_v2' 'x86_64_v3' 'x86_64_v4' 'aarch64')
 url=https://www.unrealengine.com/
-makedepends=('git' 'openssh' 'sed' 'grep' 'glibc' 'wget' 'rsync')
+makedepends=('git' 'openssh' 'sed' 'grep' 'glibc' 'wget' 'rsync' 'curl')
 depends=('sdl3' 'python' 'dotnet-runtime' 'dotnet-sdk' 'vulkan-icd-loader' 'lld' 'xdg-user-dirs' 'dos2unix' 'openssl' 'steam' 'coreutils' 'findutils')
 optdepends=('polly: for potentially increased performance'
             'qt5-base: qmake build system for projects'
@@ -374,6 +374,10 @@ prepare() {
     fi
     _sdk_ver=$(grep -oE '"MainVersion"[[:space:]]*:[[:space:]]*"[^"]+"' "${_sdk_json}" | \
                sed -E 's/.*"MainVersion"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+  fi
+  if [[ -z "${_sdk_ver}" ]]; then
+    error "Failed to parse MainVersion from ${_sdk_json:-Linux_SDK.json}; cannot resolve SDK_VERSION."
+    exit 1
   fi
   msg "Resolved SDK_VERSION=${_sdk_ver}"
 
