@@ -148,7 +148,12 @@ def render(
 ) -> RenderedFiles:
     minor_dir = repo / "templates" / minor
     common_dir = repo / "templates" / "_common"
-    meta = load_minor_meta(minor_dir)
+    try:
+        meta = load_minor_meta(minor_dir)
+    except FileNotFoundError:
+        # New minor not yet scaffolded — render with defaults (no patches,
+        # empty SDK override). Matches the n8n Generate node's fallback.
+        meta = MinorMeta(sdk_version_override="", pkgrel=1, patches=[], notes="")
     values = derive_values(
         minor=minor,
         pkgver=pkgver,
