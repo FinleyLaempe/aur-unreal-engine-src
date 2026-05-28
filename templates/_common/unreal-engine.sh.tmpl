@@ -25,19 +25,19 @@ if [ ! -d "${HOME}/.cnfig/Epic/UnrealEngine/{{MINOR}}/Intermediate/" ]; then
     mkdir -p "${HOME}/.cnfig/Epic/UnrealEngine/{{MINOR}}/Intermediate/"
 fi
 
-if [ ! -f "${HOME}/.local/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop" ]; then
-    cp "/usr/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop" \
-       "${HOME}/.local/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop"
+if [ ! -f "${HOME}/.local/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop" ]; then
+    cp "/usr/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop" \
+       "${HOME}/.local/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop"
 fi
 
-UE5desktopFileChecksum="$(sha256sum "${HOME}/.local/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop" | cut -f 1 -d ' ')"
+UE5desktopFileChecksum="$(sha256sum "${HOME}/.local/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop" | cut -f 1 -d ' ')"
 
 if [ "${UE5desktopFileChecksum}" == "ChecksumPlaceholder" ]; then
     UE5editorLocation="$(find InstalledLocationPlaceholder -type f -iname 'UnrealEditor')"
     UE5editorPath="$(echo ${UE5editorLocation/UnrealEditor/})"
 
-    sed -i "7c\\Exec=${UE5editorLocation} %F" "${HOME}/.local/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop"
-    sed -i "14c\\Path=${UE5editorPath}" "${HOME}/.local/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop"
+    sed -i "7c\\Exec=${UE5editorLocation} %F" "${HOME}/.local/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop"
+    sed -i "14c\\Path=${UE5editorPath}" "${HOME}/.local/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop"
 fi
 
-gio launch "${HOME}/.local/share/applications/com.unrealengine.UE5_{{MINOR_UNDERSCORE}}Editor.desktop"
+gio launch "${HOME}/.local/share/applications/com.unrealengine.UE{{MINOR_UNDERSCORE}}Editor.desktop"
