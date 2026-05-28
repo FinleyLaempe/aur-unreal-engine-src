@@ -1,0 +1,538 @@
+# Inspired by Alexis Belmonte's <alexbelm48@gmail.com> upstream `unreal-engine` AUR
+# Per-minor parallel-install variant. Templates auto-published from:
+#   https://github.com/FinleyLaempe/aur-unreal-engine-src
+# Maintainer: Finley Laempe <finley.laempe@web.de>
+
+# The source is about 200 MiB, with an extra ~11 GiB of dependencies downloaded in Setup.sh, and may take several hours to compile.
+# If you want additional options, there are switches below.
+pkgname=unreal-engine-src-5.6
+pkgver=5.6.1
+pkgrel=1
+_uetag="${pkgver}-release"
+_ueminor="5.6"
+_ueminor_us="5_6"
+# Empty override = parse from cloned UE5 repo's Engine/Config/Linux/Linux_SDK.json at build time
+_ue_sdk_override=""
+pkgdesc='A 3D game engine by Epic Games which can be used non-commercially for free.'
+arch=('x86_64' 'x86_64_v2' 'x86_64_v3' 'x86_64_v4' 'aarch64')
+url=https://www.unrealengine.com/
+makedepends=('git' 'openssh' 'sed' 'grep' 'glibc' 'wget' 'rsync' 'curl')
+depends=('sdl3' 'python' 'dotnet-runtime' 'dotnet-sdk' 'vulkan-icd-loader' 'lld' 'xdg-user-dirs' 'dos2unix' 'openssl' 'steam' 'coreutils' 'findutils')
+optdepends=('polly: for potentially increased performance'
+            'qt5-base: qmake build system for projects'
+            'cmake: build system for projects'
+            'qtcreator: IDE for projects'
+            'codelite: IDE for projects'
+            'kdevelop: IDE for projects'
+            'clion: IDE for projects'
+            'rider: IDE for projects'
+            'code: IDE for projects'
+            'pacman-contrib: for the paccache cleaning hook'
+            'fake-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects'
+            'ttf-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects')
+license=('custom:UnrealEngine' 'GPL3')
+# Toolchain tarball is NOT in source=(); downloaded by prepare() after clone
+# once SDK_VERSION is known (either from  or parsed
+# from the cloned UE5 repo's Engine/Config/Linux/Linux_SDK.json).
+source=('unreal-engine-5.6.sh'
+        'com.unrealengine.UE5_6Editor.desktop'
+        '0001-override-shared-target-build.patch'
+        '0002-suppress-scriptbuild-warnings-for-5-6.patch'
+        'unreal-engine-src-5.6-pacman-cache.hook'
+        'ue5_6editor.svg')
+sha256sums=('1a660833c9e070db982e29521d9114002e0259e66a22b9da38afd27a9228a60a'
+            '1d980d6878c6c80836ac1a3a9d875d86cddd1f0e91b197825fd79a8132cd1347'
+            'cd512e3fc08aaaa783e8df4a6dcb567a35502c32a6cedf8d4d71ebfa75272735'
+            'e01efe8559076f977c44ab656432a3c8e793e4c7f2b42855f736a08b6f551cf1'
+            '9a1d1b4ba09e92ad34dbddcde2d030735fb32e7e8308ac121f723c79c2907b2c'
+            'b00c398b63f15084c46f3963f62a45284ecd8dae9ba6f38a2c4af370bbfdab8d')
+# Not sure if compiling Unreal with LTO is legal? Lot's of different proprietary software goes into Unreal
+options=('!strip' 'staticlibs') # Package is smaller with "strip" but it takes a long time and generates many warnings
+
+# Default engine installation directory. Can be useful if you do not have a lot of space on the default storage drive
+# DON'T put a "/" at the start of the path
+## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
+if [[ "${UE_INSTALL_DIR}" == "" ]]; then
+  export UE_INSTALL_DIR="opt/unreal-engine-src-5.6"
+fi
+
+# Change this to true if you have a modern system and don't mind the extra packaging time (and size) to avoid compiling shaders on UE startup later; set to false by default for those with less robust systems
+## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
+if [[ "${UE_WITH_DDC}" != "true" && "${UE_WITH_DDC}" != "false" ]]; then
+  export UE_WITH_DDC=true
+fi
+
+# Enable Win64 toolchain/components in BuildGraph for cross-compilation targets
+## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
+if [[ "${UE_WITH_WIN64}" != "true" && "${UE_WITH_WIN64}" != "false" ]]; then
+  export UE_WITH_WIN64=true
+fi
+
+# Keep full debug info in produced binaries
+## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
+if [[ "${UE_WITH_FULL_DEBUG_INFO}" != "true" && "${UE_WITH_FULL_DEBUG_INFO}" != "false" ]]; then
+  export UE_WITH_FULL_DEBUG_INFO=false
+fi
+
+# BuildGraph platform toggles
+## Set these as environment variables in /etc/makepkg.conf if you want predefined behavior
+if [[ "${UE_WITH_LINUX}" != "true" && "${UE_WITH_LINUX}" != "false" ]]; then
+  export UE_WITH_LINUX=true
+fi
+
+if [[ "${UE_WITH_MAC}" != "true" && "${UE_WITH_MAC}" != "false" ]]; then
+  export UE_WITH_MAC=false
+fi
+
+if [[ "${UE_WITH_ANDROID}" != "true" && "${UE_WITH_ANDROID}" != "false" ]]; then
+  export UE_WITH_ANDROID=false
+fi
+
+if [[ "${UE_WITH_IOS}" != "true" && "${UE_WITH_IOS}" != "false" ]]; then
+  export UE_WITH_IOS=false
+fi
+
+if [[ "${UE_WITH_TVOS}" != "true" && "${UE_WITH_TVOS}" != "false" ]]; then
+  export UE_WITH_TVOS=false
+fi
+
+# BuildGraph game configurations string (semicolon-separated)
+## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
+if [[ -z "${UE_GAME_CONFIGURATIONS}" ]]; then
+  export UE_GAME_CONFIGURATIONS="Development;Shipping"
+fi
+
+# Optional BuildGraph architecture override: x64 or arm64
+## Leave unset to auto-detect from host architecture
+if [[ -n "${UE_BUILD_ARCH_OVERRIDE}" && "${UE_BUILD_ARCH_OVERRIDE}" != "x64" && "${UE_BUILD_ARCH_OVERRIDE}" != "arm64" ]]; then
+  msg "Invalid UE_BUILD_ARCH_OVERRIDE='${UE_BUILD_ARCH_OVERRIDE}'. Expected 'x64' or 'arm64'. Ignoring override."
+  unset UE_BUILD_ARCH_OVERRIDE
+fi
+
+# Change this if you want an alternative non-default logo for UE5's desktop icon; the default logo is enabled by default
+## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
+if [[ "${UE_USE_DEFAULT_LOGO_AT_INSTALL}" != "1" && "${UE_USE_DEFAULT_LOGO_AT_INSTALL}" != "0" ]]; then
+  export UE_USE_DEFAULT_LOGO_AT_INSTALL=1
+fi
+
+
+## This is for detecting your CPU architecture automatically; set to false if you want to enforce your own makepkg.conf file
+## Disabled by default as a compromise for those bothered by having it force-enabled
+
+## Note: the resulting package will still be named containing "x86_64" unless the build was done with an "official" Arch distro for that architecture (like Arch ARM - [don't exactly advise using Arch ARM though])
+## or if you manage to trick your Arch installation to accept other architecture extensions by fiddling with the $CARCH variable and /etc/pacman.conf - this method has flaws, namely due to a bug:
+## it doesn't work with "makechrootpkg" - though, this PKGBUILD doesn't work in with this method anyway because of Github SSH Agent nonsense -- if this changes in the future, let us know
+
+# Valid values are false / disabled / default, auto, and native
+
+# UE_ARCH_AUTO=""
+
+if [[ -n "$(command -v tr)" ]]; then
+  # shellcheck disable=SC2006
+  UE_ARCH_AUTO="$(echo "${UE_ARCH_AUTO}" | tr '[:upper:]' '[:lower:]')"
+fi
+
+case "${UE_ARCH_AUTO}" in
+  "auto"|"true"|"enable"|"enabled"|"1"|"native"|"false"|"disable"|"disabled"|"2")
+    :
+  ;;
+
+  *)
+    UE_ARCH_AUTO=false
+  ;;
+esac
+
+if [[ ${CFLAGS} =~ -O([0-9]+) ]]; then
+  _ue_opt_level="-O${BASH_REMATCH[1]}"
+else
+  _ue_opt_level="-O3"
+fi
+
+_ue_polly_path="$(find /usr/lib /usr/lib64 -name 'LLVMPolly.so' -print -quit 2>/dev/null)"
+
+if [[ -n "${_ue_polly_path}" ]]; then
+  export CFLAGS="${CFLAGS} -fplugin=LLVMPolly.so -mllvm=-polly -mllvm=-polly-ast-use-context -mllvm=-polly-vectorizer=stripmine -mllvm=-polly-invariant-load-hoisting -mllvm=-polly-run-inliner -mllvm=-polly-run-dce"
+fi
+
+_ue_arch="$(uname -m)"
+
+_ue_common_cflags="${_ue_opt_level} -pipe -fno-plt -fstack-clash-protection -fstack-protector-strong -fcf-protection -Wl,-z,relro,-z,now -Wformat -Werror=format-security -fPIC -fPIE -Wp,-D_FORTIFY_SOURCE=2"
+_ue_common_ldflags="-pie -Wl,-O3,--sort-common,--as-needed,-z,relro,-z,now"
+
+_ue_is_arch_auto_enabled() {
+  case "$1" in
+    auto|true|enable|enabled|1) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+_ue_set_arch_flags() {
+  local _ue_march="$1"
+  local _ue_tune="$2"
+
+  export CFLAGS="${CFLAGS} -march=${_ue_march} ${_ue_tune} ${_ue_common_cflags}"
+  export CXXFLAGS="${CFLAGS} -Wp,-D_GLIBCXX_ASSERTIONS"
+  export LDFLAGS="${_ue_common_ldflags}"
+}
+
+_ue_detect_x86_64_march() {
+  local _ue_ldso="/lib/ld-linux-x86-64.so.2"
+  local _ue_ld_help
+
+  _ue_ld_help="$("${_ue_ldso}" --help 2>/dev/null || true)"
+
+  if grep -qw "x86-64-v4 (supported" <<< "${_ue_ld_help}"; then
+    echo "x86-64-v4"
+  elif grep -qw "x86-64-v3 (supported" <<< "${_ue_ld_help}"; then
+    echo "x86-64-v3"
+  elif grep -qw "x86-64-v2 (supported" <<< "${_ue_ld_help}"; then
+    echo "x86-64-v2"
+  elif grep -Ewq "x86_64.*supported" <<< "${_ue_ld_help}"; then
+    echo "x86-64"
+  else
+    echo ""
+  fi
+}
+
+_ue_map_build_arch() {
+  local _ue_source_arch="$1"
+
+  case "${_ue_source_arch}" in
+    x86_64) echo "x64" ;;
+    aarch64) echo "arm64" ;;
+    *) echo "" ;;
+  esac
+}
+
+if [[ -n "${UE_BUILD_ARCH_OVERRIDE}" ]]; then
+  _ue_build_arch="${UE_BUILD_ARCH_OVERRIDE}"
+else
+  _ue_build_arch="$(_ue_map_build_arch "${_ue_arch}")"
+fi
+
+if _ue_is_arch_auto_enabled "${UE_ARCH_AUTO}"; then
+
+  if [[ "${_ue_arch}" == "x86_64" ]]; then
+    _ue_detected_march="$(_ue_detect_x86_64_march)"
+
+    if [[ -n "${_ue_detected_march}" ]]; then
+      _ue_set_arch_flags "${_ue_detected_march}" ""
+    else
+      msg "Could not detect a supported x86_64 micro-architecture level. Exiting."
+      return 1
+    fi
+  elif [[ "${_ue_arch}" == "aarch64" ]]; then
+    _ue_set_arch_flags "aarch64" ""
+  else
+    msg "Architecture '${_ue_arch}' is not supported! Exiting."
+    return 1
+  fi
+elif [[ "${UE_ARCH_AUTO}" == "native" ]]; then
+  _ue_set_arch_flags "native" "-mtune=native"
+fi
+
+case "${UE_ARCH_AUTO}" in
+  "auto"|"true"|"enable"|"enabled"|"native"|"1")
+    :
+  ;;
+
+  *)
+    if [[ -n "${_ue_polly_path}" ]]; then
+      ## Make sure that if polly is installed and the auto-flags above are not used, to add the polly flags to CXXFLAGS for consistency with having them set as CFLAGS
+      CXXFLAGS="${CXXFLAGS} -fplugin=LLVMPolly.so -mllvm=-polly -mllvm=-polly-ast-use-context -mllvm=-polly-vectorizer=stripmine -mllvm=-polly-invariant-load-hoisting -mllvm=-polly-run-inliner -mllvm=-polly-run-dce"
+    fi
+  ;;
+esac
+
+# Causes a SEGV during derived data cache build if not set
+export DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
+
+prepare() {
+  # --- Probe GitHub access (SSH first, HTTPS fallback) ---
+  local _ue_remote_ssh="git@github.com:EpicGames/UnrealEngine.git"
+  local _ue_remote_https="https://github.com/EpicGames/UnrealEngine.git"
+  local _ue_remote=""
+
+  msg "Probing GitHub access to EpicGames/UnrealEngine..."
+  if git ls-remote "${_ue_remote_ssh}" &>/dev/null; then
+    _ue_remote="${_ue_remote_ssh}"
+    msg "  -> SSH OK, using ${_ue_remote}"
+  elif git ls-remote "${_ue_remote_https}" &>/dev/null; then
+    _ue_remote="${_ue_remote_https}"
+    msg "  -> SSH failed, HTTPS OK, using ${_ue_remote}"
+  else
+    error "Cannot access EpicGames/UnrealEngine via SSH or HTTPS."
+    error "You must:"
+    error "  1. Have a GitHub account linked to your Epic Games account:"
+    error "     https://www.unrealengine.com/en-US/ue-on-github"
+    error "  2. Accept the @EpicGames org invitation in your GitHub inbox."
+    error "  3. Configure either:"
+    error "     - SSH: 'ssh -T git@github.com' must succeed with your key"
+    error "     - HTTPS: 'gh auth login' or git credential helper with PAT (repo scope)"
+    error "Probed: ${_ue_remote_ssh} and ${_ue_remote_https}"
+    exit 1
+  fi
+
+  # --- Build config summary (preserved from upstream lines 255–311) ---
+  local _ue_commit="not-cloned"
+  local _ue_install_path="/${UE_INSTALL_DIR#/}"
+  local _ue_arch_label="${_ue_build_arch:-unknown}"
+  local _ue_arch_detail=""
+  local _ue_ddc_text="no"
+  local _ue_debug_text="no"
+  local _ue_default_logo_text="yes"
+  local _ue_target_platforms=()
+  local _ue_platforms_csv="none"
+
+  if [[ -d "${pkgname}/.git" ]]; then
+    _ue_commit="$(git -C "${pkgname}" rev-parse --short HEAD 2>/dev/null || echo unknown)"
+  fi
+  if [[ "${_ue_arch_label}" == "x64" ]]; then
+    if [[ -n "${_ue_detected_march}" ]]; then
+      _ue_arch_detail=" (${_ue_detected_march})"
+    elif [[ ${CFLAGS} =~ -march=([^[:space:]]+) ]]; then
+      _ue_arch_detail=" (${BASH_REMATCH[1]})"
+    else
+      _ue_arch_detail=" (x86_64)"
+    fi
+  elif [[ "${_ue_arch_label}" == "arm64" ]]; then
+    if [[ ${CFLAGS} =~ -march=([^[:space:]]+) ]]; then
+      _ue_arch_detail=" (${BASH_REMATCH[1]})"
+    else
+      _ue_arch_detail=" (aarch64)"
+    fi
+  fi
+  [[ "${UE_WITH_DDC}" == "true" ]]                  && _ue_ddc_text="yes"
+  [[ "${UE_WITH_FULL_DEBUG_INFO}" == "true" ]]      && _ue_debug_text="yes"
+  [[ "${UE_USE_DEFAULT_LOGO_AT_INSTALL}" == "0" ]]  && _ue_default_logo_text="no"
+  [[ "${UE_WITH_WIN64}" == "true" ]]    && _ue_target_platforms+=("Windows")
+  [[ "${UE_WITH_LINUX}" == "true" ]]    && _ue_target_platforms+=("Linux")
+  [[ "${UE_WITH_MAC}" == "true" ]]      && _ue_target_platforms+=("macOS")
+  [[ "${UE_WITH_TVOS}" == "true" ]]     && _ue_target_platforms+=("tvOS")
+  [[ "${UE_WITH_ANDROID}" == "true" ]]  && _ue_target_platforms+=("Android")
+  [[ "${UE_WITH_IOS}" == "true" ]]      && _ue_target_platforms+=("iOS")
+  if (( ${#_ue_target_platforms[@]} > 0 )); then
+    local IFS=", "
+    _ue_platforms_csv="${_ue_target_platforms[*]}"
+  fi
+  msg ''
+  msg "Unreal Engine ${pkgver} (commit ${_ue_commit}) build options summary:"
+  msg ''
+  msg "- End package installation path:            ${_ue_install_path}"
+  msg "- Target architecture build:                ${_ue_arch_label}${_ue_arch_detail}"
+  msg "- Integrate prebuilt shader cache:          ${_ue_ddc_text}"
+  msg "- Target platforms supported for export:    ${_ue_platforms_csv}"
+  msg "- Game configurations:                      ${UE_GAME_CONFIGURATIONS}"
+  msg "- Include full debug info:                  ${_ue_debug_text}"
+  msg "- Use default logo at install:              ${_ue_default_logo_text}"
+  msg ''
+
+  # --- Clone or update UE5 source ---
+  if [[ ! -d "${pkgname}" ]]; then
+    git clone --depth=1 --branch="${_uetag}" "${_ue_remote}" "${pkgname}"
+  else
+    cd "${pkgname}"
+    if [[ "$(git describe --tags 2>/dev/null)" != "${_uetag}" ]]; then
+      cd .. && rm -rf "${pkgname}"
+      git clone --depth=1 --branch="${_uetag}" "${_ue_remote}" "${pkgname}"
+    else
+      rm -f .git/index.lock
+      git fetch --depth=1 origin tag "${_uetag}"
+      git reset --hard "${_uetag}"
+      cd ..
+    fi
+  fi
+
+  # --- Apply per-minor patches (continues on failure per upstream behaviour) ---
+  for patch_file in ../*.patch; do
+    [[ -f "${patch_file}" ]] || continue
+    msg "Applying ${patch_file}"
+    if ! patch -p1 -d "${pkgname}" -i "${patch_file}"; then
+      msg "Some or all of the patch at ${patch_file} failed to apply. Will still try to build."
+    fi
+  done
+
+  cd "${pkgname}" || return
+
+  # --- Qt Creator source code access (preserved from upstream) ---
+  if [[ ! -d Engine/Plugins/Developer/QtCreatorSourceCodeAccess ]]; then
+    git -C Engine/Plugins/Developer clone --depth=1 https://github.com/fire-archive/QtCreatorSourceCodeAccess
+  fi
+
+  # --- HaveLinuxDependencies marker (preserved from upstream) ---
+  if [[ ! -f Engine/Source/ThirdParty/Linux/HaveLinuxDependencies ]]; then
+    mkdir -p Engine/Source/ThirdParty/Linux/
+    touch Engine/Source/ThirdParty/Linux/HaveLinuxDependencies
+    sed -i "1c\This file must have no extension so that GitDeps considers it a binary dependency - it will only be pulled by the Setup script if Linux is enabled. Please do not remove this file." Engine/Source/ThirdParty/Linux/HaveLinuxDependencies
+  fi
+
+  # --- Setup.sh tweak for non-interactive UVS register (preserved) ---
+  if [[ -f Setup.sh ]]; then
+    sed -i 's#UnrealVersionSelector-Linux-Shipping -register > /dev/null &#UnrealVersionSelector-Linux-Shipping -register -unattended > /dev/null \&#' Setup.sh
+  fi
+
+  ./Setup.sh
+  cd "${srcdir}" || return
+
+  # --- Resolve SDK_VERSION ---
+  local _sdk_ver="${_ue_sdk_override}"
+  if [[ -z "${_sdk_ver}" ]]; then
+    local _sdk_json="${srcdir}/${pkgname}/Engine/Config/Linux/Linux_SDK.json"
+    if [[ ! -f "${_sdk_json}" ]]; then
+      error "Cannot find ${_sdk_json}; cannot resolve SDK_VERSION."
+      exit 1
+    fi
+    _sdk_ver=$(grep -oE '"MainVersion"[[:space:]]*:[[:space:]]*"[^"]+"' "${_sdk_json}" | \
+               sed -E 's/.*"MainVersion"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+  fi
+  if [[ -z "${_sdk_ver}" ]]; then
+    error "Failed to parse MainVersion from ${_sdk_json:-Linux_SDK.json}; cannot resolve SDK_VERSION."
+    exit 1
+  fi
+  msg "Resolved SDK_VERSION=${_sdk_ver}"
+
+  # --- Download + extract toolchain ---
+  local _sdk_url="https://cdn.unrealengine.com/Toolchain_Linux/${_sdk_ver}.tar.gz"
+  local _sdk_tar="${srcdir}/${_sdk_ver}.tar.gz"
+  if [[ ! -f "${_sdk_tar}" ]]; then
+    msg "Downloading SDK toolchain from ${_sdk_url}"
+    curl -fL --retry 3 -o "${_sdk_tar}" "${_sdk_url}" || {
+      error "Failed to download SDK toolchain from ${_sdk_url}"
+      exit 1
+    }
+  fi
+
+  mkdir -p "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
+  tar -xf "${_sdk_tar}" -C "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
+
+  # --- Build third-party + dotnet setup (preserved from upstream) ---
+  "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/BuildThirdParty.sh"
+  "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/SetupDotnet.sh"
+  "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/FixDependencyFiles.sh"
+}
+
+build() {
+  cd "${pkgname}" || return
+
+  # Rebuild UBT from patched source so the pre-built dll is replaced before BuildGraph runs.
+  # RunUBT.sh skips the rebuild when InstalledBuild.txt exists, so we must do it explicitly here.
+  dotnet build "Engine/Source/Programs/UnrealBuildTool/UnrealBuildTool.csproj" \
+    -c Development \
+    -o "Engine/Binaries/DotNET/UnrealBuildTool" \
+    --no-self-contained \
+    -p:GenerateDocumentationFile=false
+
+  if [[ $? -ne 0 ]]; then
+    msg 'Error: Failed to rebuild UnrealBuildTool.'
+    exit $?
+  fi
+
+  local _ue_buildgraph_arch_arg=()
+
+  if [[ -n "${_ue_build_arch}" ]]; then
+    _ue_buildgraph_arch_arg=(-set:BuildArchitecture="${_ue_build_arch}")
+  fi
+
+  "Engine/Build/BatchFiles/RunUAT.sh" BuildGraph \
+    -target="Make Installed Build Linux" \
+    -script=Engine/Build/InstalledEngineBuild.xml \
+    -nosign \
+    "${_ue_buildgraph_arch_arg[@]}" \
+    -set:WithDDC="${UE_WITH_DDC}" \
+    -set:WithLinux="${UE_WITH_LINUX}" \
+    -set:WithWin64="${UE_WITH_WIN64}" \
+    -set:WithMac="${UE_WITH_MAC}" \
+    -set:WithAndroid="${UE_WITH_ANDROID}" \
+    -set:WithIOS="${UE_WITH_IOS}" \
+    -set:WithTVOS="${UE_WITH_TVOS}" \
+    -set:GameConfigurations="${UE_GAME_CONFIGURATIONS}" \
+    -set:WithFullDebugInfo="${UE_WITH_FULL_DEBUG_INFO}"
+
+  if [[ $? -ne 0 ]]; then
+    msg "Error: Build failed; try searching the output for suspicious messages." >&2
+    return;
+  fi
+}
+
+package() {
+  # Desktop entry (rendered with correct Exec + Path per minor; no sed needed)
+  install -Dm644 "com.unrealengine.UE${_ueminor_us}Editor.desktop" \
+    "${pkgdir}/usr/share/applications/com.unrealengine.UE${_ueminor_us}Editor.desktop"
+  chmod +x "${pkgdir}/usr/share/applications/com.unrealengine.UE${_ueminor_us}Editor.desktop"
+
+  ## Pacman hook: trim cache to one prior build per minor
+  install -Dm775 "${pkgname}-pacman-cache.hook" \
+    "${pkgdir}/etc/pacman.d/hooks/${pkgname}-pacman-cache.hook"
+  
+  install -dm755 "${pkgdir}/usr/bin"
+  install -dm755 "${pkgdir}/usr/share/pixmaps/"
+  install -dm755 "${pkgdir}/usr/share/applications/"
+
+  # Icon for Desktop entry (renamed per minor to avoid pixmap collisions)
+  if [[ "${UE_USE_DEFAULT_LOGO_AT_INSTALL}" == "1" ]]; then
+    install -Dm644 "ue${_ueminor_us}editor.svg" "${pkgdir}/usr/share/pixmaps/ue${_ueminor_us}editor.svg"
+  else
+    mv "ue${_ueminor_us}editor.svg" "ue${_ueminor_us}editor.svg.bak"
+    wget --output-document "ue${_ueminor_us}editor.svg" "https://raw.githubusercontent.com/EliverLara/candy-icons/master/apps/scalable/ue4editor.svg"
+    install -Dm644 "ue${_ueminor_us}editor.svg" "${pkgdir}/usr/share/pixmaps/ue${_ueminor_us}editor.svg"
+    wget --output-document "LICENSE" "https://raw.githubusercontent.com/EliverLara/candy-icons/master/LICENSE"
+    mkdir -p "${pkgdir}/usr/share/UnrealEngine/EliverLara-candy-icons/"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/UnrealEngine/EliverLara-candy-icons/"
+    rm "ue${_ueminor_us}editor.svg"
+    rm LICENSE
+    mv "ue${_ueminor_us}editor.svg.bak" "ue${_ueminor_us}editor.svg"
+  fi
+
+  # License
+  install -Dm644 "${srcdir}/${pkgname}/LICENSE.md"  "${pkgdir}/usr/share/licenses/UnrealEngine/LICENSE.md"
+  
+  # Engine
+  ## Set to all permissions to prevent the engine from breaking itself; more elegant solutions might exist - suggest them if they can be automated here
+  ## Also, correct me if I package this improperly; I added Win64 support for the build in hopes of supporting cross-compilation
+  install -dm777 "${pkgdir}/${UE_INSTALL_DIR}/Engine"
+  
+  # Copy LocalBuilds to pkg...
+  rsync -a "${srcdir}/${pkgname}/LocalBuilds/Engine/Linux/" "${pkgdir}/${UE_INSTALL_DIR}/"
+  if [[ -f "${srcdir}/${pkgname}/LocalBuilds/Engine/Linux/Engine/Binaries/Linux/UnrealEditor" ]]; then
+    # Can never be too careful with recursive rm...
+    rm -r "${srcdir}/${pkgname}/LocalBuilds"
+  fi
+
+  # Ensure InstalledBuild.txt is present so UBT treats this as an installed engine,
+  # preventing the "unique build environment" error when building projects.
+  printf '%s' "${pkgver}" | install -Dm644 /dev/stdin "${pkgdir}/${UE_INSTALL_DIR}/Engine/Build/InstalledBuild.txt"
+
+  # Copy the rest of it to pkg... Should we be overwriting LocalBuilds?
+  rsync -a --exclude='Intermediate/' "${srcdir}/${pkgname}/" "${pkgdir}/${UE_INSTALL_DIR}/"
+
+  # The BuildGraph staging copies the unpatched UBT DLL from CsTools into LocalBuilds,
+  # which then overwrites our patched build. Re-stamp both locations with the patched DLL.
+  local _ubtsrcdir="${srcdir}/${pkgname}/Engine/Source/Programs/UnrealBuildTool"
+  local _ubtpkgdir="${pkgdir}/${pkgname}/${UE_INSTALL_DIR}/Engine/Binaries/DotNET/UnrealBuildTool"
+
+  if [[ -x "$(find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'xbuild')" ]]; then
+    find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'xbuild' -exec chmod +x "{}" \;
+  fi
+  
+  if [[ -x "$(find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'mcs')" ]]; then
+    find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'mcs' -exec chmod +x "{}" \;
+  fi
+  
+  ## Do this, in case the path doesn't exist for some reason
+  mkdir -p "${pkgdir}/${UE_INSTALL_DIR}/Engine/Binaries/Android/"
+  
+  # Launcher (per-minor name avoids collision with other unreal-engine-src-5.X packages)
+  install -Dm755 "../unreal-engine-5.6.sh" "${pkgdir}/usr/bin/unreal-engine-5.6"
+  chmod +x "${pkgdir}/usr/bin/unreal-engine-5.6"
+  # Per-minor short-form symlinks (e.g. ue5.6, UE5.6); no plain ue5/UE5/unreal-engine-5 to avoid cross-minor collisions
+  for _link in ue5.6 UE5.6; do
+    ln -s "/usr/bin/unreal-engine-5.6" "${pkgdir}/usr/bin/${_link}"
+    chmod 755 "${pkgdir}/usr/bin/${_link}"
+  done
+  
+  # Configuring the launch script to detect when it has been run for the first time
+  # Note: Requires that there isn't already a UE5 desktop entry in "${HOME}/local/share/applications/" - delete yours if you have one there before installing this
+  DesktopFileChecksum=$(sha256sum "${pkgdir}/usr/share/applications/com.unrealengine.UE${_ueminor_us}Editor.desktop" | cut -f 1 -d ' ')
+  sed -i "s|ChecksumPlaceholder|${DesktopFileChecksum}|" "${pkgdir}/usr/bin/unreal-engine-5.6"
+  sed -i "s|InstalledLocationPlaceholder|/${UE_INSTALL_DIR}/Engine/Binaries|" "${pkgdir}/usr/bin/unreal-engine-5.6"
+}
