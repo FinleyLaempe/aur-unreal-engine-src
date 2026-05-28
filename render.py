@@ -158,9 +158,9 @@ def render(
 
     # Output filenames derived from values
     launcher_name = f"{values['LAUNCHER_BIN']}.sh"
-    desktop_name = f"com.unrealengine.UE5_{values['MINOR_UNDERSCORE']}Editor.desktop"
+    desktop_name = f"com.unrealengine.UE{values['MINOR_UNDERSCORE']}Editor.desktop"
     hook_name = f"{values['PKGNAME']}-pacman-cache.hook"
-    icon_name = f"ue5_{values['MINOR_UNDERSCORE']}editor.svg"
+    icon_name = f"ue{values['MINOR_UNDERSCORE']}editor.svg"
 
     files: dict[str, bytes] = {}
 

@@ -4,8 +4,6 @@ from pathlib import Path
 
 import pytest
 
-pytestmark = pytest.mark.xfail(reason="templates not yet created; see Phase B", run=True, strict=False)
-
 from render import MinorMeta, load_minor_meta
 
 
