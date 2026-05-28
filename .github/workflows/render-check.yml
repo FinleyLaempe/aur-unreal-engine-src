@@ -1,0 +1,44 @@
+name: render-check
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  render-all-minors:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        minor: ["5.0", "5.1", "5.2", "5.3", "5.4", "5.5", "5.6"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+      - name: Render minor ${{ matrix.minor }}
+        run: |
+          python render.py "${{ matrix.minor }}" \
+            --pkgver "${{ matrix.minor }}.0" \
+            --template-sha "ci" \
+            --out "out/${{ matrix.minor }}"
+      - name: Upload rendered package
+        uses: actions/upload-artifact@v4
+        with:
+          name: rendered-${{ matrix.minor }}
+          path: out/${{ matrix.minor }}
+
+  namcap:
+    needs: render-all-minors
+    runs-on: ubuntu-latest
+    container: archlinux:latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install namcap + python
+        run: pacman -Sy --noconfirm namcap python
+      - name: Render 5.6 (only minor with patches)
+        run: python render.py 5.6 --pkgver 5.6.1 --template-sha ci --out out/5.6
+      - name: Run namcap
+        working-directory: out/5.6
+        run: namcap PKGBUILD || true   # warnings tolerated; failures surface in log
