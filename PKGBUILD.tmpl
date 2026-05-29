@@ -49,7 +49,12 @@ fi
 # Change this to true if you have a modern system and don't mind the extra packaging time (and size) to avoid compiling shaders on UE startup later; set to false by default for those with less robust systems
 ## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
 if [[ "${UE_WITH_DDC}" != "true" && "${UE_WITH_DDC}" != "false" ]]; then
-  export UE_WITH_DDC=true
+  # Skip the prebuilt Derived Data Cache by default: it adds hours to the
+  # build (compiles shader permutations for every sample asset) and the
+  # Editor compiles shaders on first launch anyway. Override with
+  # UE_WITH_DDC=true in /etc/makepkg.conf or on the makepkg command line if
+  # you want the shipped-shader experience at the cost of build time.
+  export UE_WITH_DDC=false
 fi
 
 # Enable Win64 toolchain/components in BuildGraph for cross-compilation targets
