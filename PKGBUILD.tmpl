@@ -361,10 +361,13 @@ prepare() {
     sed -i 's#UnrealVersionSelector-Linux-Shipping -register > /dev/null &#UnrealVersionSelector-Linux-Shipping -register -unattended > /dev/null \&#' Setup.sh
   fi
 
-  ./Setup.sh
-  cd "${srcdir}" || return
-
   # --- Resolve SDK_VERSION ---
+  # MUST happen BEFORE Setup.sh: SetupToolchain.sh (invoked by Setup.sh)
+  # downloads the toolchain itself, and Epic's CDN download path is slow/
+  # flaky enough that it routinely fails partway through. By extracting our
+  # own tarball into the expected destination first, SetupToolchain.sh's
+  # "already installed" check passes and the embedded downloader is skipped
+  # entirely.
   local _sdk_ver="${_ue_sdk_override}"
   if [[ -z "${_sdk_ver}" ]]; then
     local _sdk_json="${srcdir}/${pkgname}/Engine/Config/Linux/Linux_SDK.json"
@@ -389,9 +392,10 @@ prepare() {
   fi
   msg "Resolved SDK_VERSION=${_sdk_ver} (tarball: ${_sdk_basename}.tar.gz)"
 
-  # --- Download + extract toolchain ---
+  # --- Download + extract toolchain (before Setup.sh) ---
   local _sdk_url="https://cdn.unrealengine.com/Toolchain_Linux/${_sdk_basename}.tar.gz"
   local _sdk_tar="${srcdir}/${_sdk_basename}.tar.gz"
+  local _sdk_dest="${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
   if [[ ! -f "${_sdk_tar}" ]]; then
     msg "Downloading SDK toolchain from ${_sdk_url}"
     curl -fL --retry 3 -o "${_sdk_tar}" "${_sdk_url}" || {
@@ -399,9 +403,18 @@ prepare() {
       exit 1
     }
   fi
+  mkdir -p "${_sdk_dest}"
+  # Only extract if not already done (idempotent across resume attempts).
+  if [[ ! -d "${_sdk_dest}${_sdk_basename}" ]]; then
+    msg "Extracting SDK toolchain to ${_sdk_dest}"
+    tar -xf "${_sdk_tar}" -C "${_sdk_dest}"
+  else
+    msg "SDK toolchain already extracted at ${_sdk_dest}${_sdk_basename}"
+  fi
 
-  mkdir -p "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
-  tar -xf "${_sdk_tar}" -C "${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
+  # --- Setup.sh (now sees existing toolchain, skips its own download) ---
+  ./Setup.sh
+  cd "${srcdir}" || return
 
   # --- Build third-party + dotnet setup (preserved from upstream) ---
   "${srcdir}/${pkgname}/Engine/Build/BatchFiles/Linux/BuildThirdParty.sh"
