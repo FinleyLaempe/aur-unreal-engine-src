@@ -502,15 +502,18 @@ package() {
     wget --output-document "ue${_ueminor_us}editor.svg" "https://raw.githubusercontent.com/EliverLara/candy-icons/master/apps/scalable/ue4editor.svg"
     install -Dm644 "ue${_ueminor_us}editor.svg" "${pkgdir}/usr/share/pixmaps/ue${_ueminor_us}editor.svg"
     wget --output-document "LICENSE" "https://raw.githubusercontent.com/EliverLara/candy-icons/master/LICENSE"
-    mkdir -p "${pkgdir}/usr/share/UnrealEngine/EliverLara-candy-icons/"
-    install -Dm644 LICENSE "${pkgdir}/usr/share/UnrealEngine/EliverLara-candy-icons/"
+    # Per-pkgname dir avoids collision when multiple unreal-engine-src-5.X
+    # packages are installed in parallel.
+    mkdir -p "${pkgdir}/usr/share/${pkgname}/EliverLara-candy-icons/"
+    install -Dm644 LICENSE "${pkgdir}/usr/share/${pkgname}/EliverLara-candy-icons/"
     rm "ue${_ueminor_us}editor.svg"
     rm LICENSE
     mv "ue${_ueminor_us}editor.svg.bak" "ue${_ueminor_us}editor.svg"
   fi
 
-  # License
-  install -Dm644 "${srcdir}/${pkgname}/LICENSE.md"  "${pkgdir}/usr/share/licenses/UnrealEngine/LICENSE.md"
+  # License — per-pkgname dir (Arch convention + avoids collision when
+  # multiple unreal-engine-src-5.X packages are installed in parallel).
+  install -Dm644 "${srcdir}/${pkgname}/LICENSE.md" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.md"
   
   # Engine
   ## Set to all permissions to prevent the engine from breaking itself; more elegant solutions might exist - suggest them if they can be automated here
