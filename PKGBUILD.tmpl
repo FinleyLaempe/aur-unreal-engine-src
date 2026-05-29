@@ -379,11 +379,19 @@ prepare() {
     error "Failed to parse MainVersion from ${_sdk_json:-Linux_SDK.json}; cannot resolve SDK_VERSION."
     exit 1
   fi
-  msg "Resolved SDK_VERSION=${_sdk_ver}"
+  # Linux_SDK.json's MainVersion is the bare toolchain identifier
+  # (e.g. "v26_clang-20.1.8-rockylinux8"). Epic's CDN serves it as
+  # "native-linux-<MainVersion>.tar.gz" so add the prefix if it's not
+  # already present (handles user overrides that already include it).
+  local _sdk_basename="${_sdk_ver}"
+  if [[ "${_sdk_basename}" != native-linux-* ]]; then
+    _sdk_basename="native-linux-${_sdk_basename}"
+  fi
+  msg "Resolved SDK_VERSION=${_sdk_ver} (tarball: ${_sdk_basename}.tar.gz)"
 
   # --- Download + extract toolchain ---
-  local _sdk_url="https://cdn.unrealengine.com/Toolchain_Linux/${_sdk_ver}.tar.gz"
-  local _sdk_tar="${srcdir}/${_sdk_ver}.tar.gz"
+  local _sdk_url="https://cdn.unrealengine.com/Toolchain_Linux/${_sdk_basename}.tar.gz"
+  local _sdk_tar="${srcdir}/${_sdk_basename}.tar.gz"
   if [[ ! -f "${_sdk_tar}" ]]; then
     msg "Downloading SDK toolchain from ${_sdk_url}"
     curl -fL --retry 3 -o "${_sdk_tar}" "${_sdk_url}" || {
