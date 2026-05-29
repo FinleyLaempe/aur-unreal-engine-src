@@ -449,11 +449,22 @@ build() {
     _ue_buildgraph_arch_arg=(-set:BuildArchitecture="${_ue_build_arch}")
   fi
 
+  # DDC commandlet routinely SIGSEGVs at editor shutdown (LockFreeFixedSizeAllocator
+  # assertion, UE5 Vulkan-RHI cleanup bug). When the user hasn't explicitly opted
+  # in, skip the BuildGraph node by name in addition to -set:WithDDC=false so a
+  # stale env value can't reintroduce the crash. The editor compiles shaders on
+  # first launch instead.
+  local _ue_buildgraph_extra=()
+  if [[ "${UE_WITH_DDC}" != "true" ]]; then
+    _ue_buildgraph_extra+=(-IgnoreNode="Build Derived Data Cache")
+  fi
+
   "Engine/Build/BatchFiles/RunUAT.sh" BuildGraph \
     -target="Make Installed Build Linux" \
     -script=Engine/Build/InstalledEngineBuild.xml \
     -nosign \
     "${_ue_buildgraph_arch_arg[@]}" \
+    "${_ue_buildgraph_extra[@]}" \
     -set:WithDDC="${UE_WITH_DDC}" \
     -set:WithLinux="${UE_WITH_LINUX}" \
     -set:WithWin64="${UE_WITH_WIN64}" \
