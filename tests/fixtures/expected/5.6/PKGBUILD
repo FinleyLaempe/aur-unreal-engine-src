@@ -550,10 +550,12 @@ package() {
   # Launcher (per-minor name avoids collision with other unreal-engine-src-5.X packages)
   install -Dm755 "../unreal-engine-5.6.sh" "${pkgdir}/usr/bin/unreal-engine-5.6"
   chmod +x "${pkgdir}/usr/bin/unreal-engine-5.6"
-  # Per-minor short-form symlinks (e.g. ue5.6, UE5.6); no plain ue5/UE5/unreal-engine-5 to avoid cross-minor collisions
+  # Per-minor short-form symlinks (e.g. ue5.6, UE5.6); no plain ue5/UE5/unreal-engine-5 to avoid cross-minor collisions.
+  # Target is absolute (/usr/bin/unreal-engine-5.6) so the link resolves correctly once the package is installed.
+  # No chmod here: it would follow the symlink (currently dangling inside ${pkgdir}) and fail. Linux ignores
+  # symlink mode bits anyway — the underlying target's perms apply when the link is traversed.
   for _link in ue5.6 UE5.6; do
     ln -s "/usr/bin/unreal-engine-5.6" "${pkgdir}/usr/bin/${_link}"
-    chmod 755 "${pkgdir}/usr/bin/${_link}"
   done
   
   # Configuring the launch script to detect when it has been run for the first time
