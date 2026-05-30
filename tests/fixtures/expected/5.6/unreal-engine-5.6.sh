@@ -40,4 +40,18 @@ if [ "${UE5desktopFileChecksum}" == "ChecksumPlaceholder" ]; then
     sed -i "14c\\Path=${UE5editorPath}" "${HOME}/.local/share/applications/com.unrealengine.UE5_6Editor.desktop"
 fi
 
+# Register this engine with UnrealVersionSelector once, from the INSTALLED
+# binary so it records the real /opt/unreal-engine-src-5.6 path (the build-time register
+# in Setup.sh was stripped because it recorded the transient build tree). This
+# is what wires up .uproject file associations: double-click to open in this
+# engine, right-click -> Generate Project Files. Stamped per version so it only
+# runs on first launch after install/upgrade.
+UE5uvsBin="/opt/unreal-engine-src-5.6/Engine/Binaries/Linux/UnrealVersionSelector-Linux-Shipping"
+UE5uvsStamp="${HOME}/.config/Epic/UnrealEngine/5.6/.uvs-registered-5.6.1"
+if [ -x "${UE5uvsBin}" ] && [ ! -f "${UE5uvsStamp}" ]; then
+    if "${UE5uvsBin}" -register -unattended > /dev/null 2>&1; then
+        touch "${UE5uvsStamp}"
+    fi
+fi
+
 gio launch "${HOME}/.local/share/applications/com.unrealengine.UE5_6Editor.desktop"

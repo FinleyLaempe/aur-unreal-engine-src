@@ -380,11 +380,11 @@ prepare() {
   # Setup.sh runs `UnrealVersionSelector-Linux-Shipping -register`, which writes
   # an engine-ID -> path map to ~/.config/Epic/UnrealEngine/Install.ini and drops
   # com.epicgames.* desktop entries (an "editor" and a "generate project files"
-  # applet) into ~/.local/share/applications/. At build time those record the
-  # transient build-tree path, not the final /${UE_INSTALL_DIR}, so post-install
-  # both applets point nowhere and error out. We ship our own correctly-pathed
-  # com.unrealengine.UE${_ueminor_us}Editor.desktop instead, so strip the
-  # register call entirely.
+  # applet). At BUILD time those record the transient build-tree path, not the
+  # final /${UE_INSTALL_DIR}, so they would point nowhere post-install. We strip
+  # the build-time call and instead register at first launch from the launcher,
+  # where UVS runs from the real /${UE_INSTALL_DIR} binary and records the
+  # correct path (so .uproject double-click/right-click associations work).
   if [[ -f Setup.sh ]]; then
     sed -i '/UnrealVersionSelector-Linux-Shipping -register/d' Setup.sh
   fi
