@@ -63,11 +63,11 @@ The next n8n cycle will publish `unreal-engine-src-5.7` once Epic ships a
 ## n8n bundle trigger
 
 The same n8n workflow has a separate Manual Trigger "Bundle All Minors" that
-renders every minor at hardcoded latest tags (edit the `TAGS` constant inside
-the Bundle Render All Code node to change) and returns a single
-`unreal-engine-src-bundle.zip` containing all rendered packages, each in its
-own `unreal-engine-src-5.X/` subdirectory. Useful for end-to-end local testing
-without touching AUR.
+reuses the live release feed (same `Pick Latest Per Minor` output as the daily
+job — no hardcoded tags) and returns a single `unreal-engine-src-bundle.zip`
+containing all rendered packages, each in its own `unreal-engine-src-5.X/`
+subdirectory, plus `build-and-install.sh` at the ZIP root. Useful for
+end-to-end local testing without touching AUR.
 
 ## Build status (verified manually)
 
@@ -90,6 +90,17 @@ All non-toolchain entries in `source=()` use `sha256sums=('SKIP')`. These files
 or the local renderer, so makepkg's integrity check would only be checking the
 renderer's own output against itself. The toolchain tarball is downloaded
 inside `prepare()` via `curl -f`, which fails loudly on download failure.
+
+## Package size
+
+The package ships only the **Installed Build** produced by
+`Make Installed Build Linux` (headers + static libs included, so C++ projects
+still compile), and binaries are stripped. It does NOT re-bundle the full
+source checkout on top — that previously dragged in `.git`, Setup.sh's
+ThirdParty downloads, the SDK toolchain and the DDC, inflating the package to
+~140 GiB. Win64 cross-compile components are also off by default
+(`UE_WITH_WIN64=false`). Expect roughly 40 GiB installed. Re-enable any of
+these via env vars in `/etc/makepkg.conf` if you need them.
 
 ## Status
 
