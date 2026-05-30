@@ -376,9 +376,17 @@ prepare() {
     sed -i "1c\This file must have no extension so that GitDeps considers it a binary dependency - it will only be pulled by the Setup script if Linux is enabled. Please do not remove this file." Engine/Source/ThirdParty/Linux/HaveLinuxDependencies
   fi
 
-  # --- Setup.sh tweak for non-interactive UVS register (preserved) ---
+  # --- Suppress UnrealVersionSelector self-registration in Setup.sh ---
+  # Setup.sh runs `UnrealVersionSelector-Linux-Shipping -register`, which writes
+  # an engine-ID -> path map to ~/.config/Epic/UnrealEngine/Install.ini and drops
+  # com.epicgames.* desktop entries (an "editor" and a "generate project files"
+  # applet) into ~/.local/share/applications/. At build time those record the
+  # transient build-tree path, not the final /${UE_INSTALL_DIR}, so post-install
+  # both applets point nowhere and error out. We ship our own correctly-pathed
+  # com.unrealengine.UE${_ueminor_us}Editor.desktop instead, so strip the
+  # register call entirely.
   if [[ -f Setup.sh ]]; then
-    sed -i 's#UnrealVersionSelector-Linux-Shipping -register > /dev/null &#UnrealVersionSelector-Linux-Shipping -register -unattended > /dev/null \&#' Setup.sh
+    sed -i '/UnrealVersionSelector-Linux-Shipping -register/d' Setup.sh
   fi
 
   # --- Resolve SDK_VERSION ---
