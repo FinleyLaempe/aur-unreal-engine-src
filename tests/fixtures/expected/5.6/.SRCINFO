@@ -42,7 +42,6 @@ pkgbase = unreal-engine-src-5.6
 	optdepends = pacman-contrib: for the paccache cleaning hook
 	optdepends = fake-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects
 	optdepends = ttf-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects
-	options = !strip
 	options = staticlibs
 	source = unreal-engine-5.6.sh
 	source = com.unrealengine.UE5_6Editor.desktop

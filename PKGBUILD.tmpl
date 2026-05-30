@@ -37,7 +37,10 @@ license=('custom:UnrealEngine' 'GPL3')
 source=({{PATCH_SOURCES}})
 sha256sums=({{NON_TOOLCHAIN_SHA256_LIST}})
 # Not sure if compiling Unreal with LTO is legal? Lot's of different proprietary software goes into Unreal
-options=('!strip' 'staticlibs') # Package is smaller with "strip" but it takes a long time and generates many warnings
+# 'staticlibs' kept: the installed engine ships .a files needed to link C++ projects.
+# 'strip' left ON (no '!strip'): UE5 debug symbols add tens of GiB to the package;
+# stripping is slow and noisy but is the single biggest size win.
+options=('staticlibs')
 
 # Default engine installation directory. Can be useful if you do not have a lot of space on the default storage drive
 # DON'T put a "/" at the start of the path
@@ -57,10 +60,12 @@ if [[ "${UE_WITH_DDC}" != "true" && "${UE_WITH_DDC}" != "false" ]]; then
   export UE_WITH_DDC=false
 fi
 
-# Enable Win64 toolchain/components in BuildGraph for cross-compilation targets
+# Enable Win64 toolchain/components in BuildGraph for cross-compilation targets.
+# Default false: shipping the Win64 cross toolchain + binaries adds ~10-20 GiB to
+# the package and is useless unless you actually cross-compile for Windows.
 ## Set this as an environment variable in /etc/makepkg.conf if you want predefined behavior
 if [[ "${UE_WITH_WIN64}" != "true" && "${UE_WITH_WIN64}" != "false" ]]; then
-  export UE_WITH_WIN64=true
+  export UE_WITH_WIN64=false
 fi
 
 # Keep full debug info in produced binaries
@@ -432,15 +437,13 @@ build() {
 
   # Rebuild UBT from patched source so the pre-built dll is replaced before BuildGraph runs.
   # RunUBT.sh skips the rebuild when InstalledBuild.txt exists, so we must do it explicitly here.
-  dotnet build "Engine/Source/Programs/UnrealBuildTool/UnrealBuildTool.csproj" \
+  if ! dotnet build "Engine/Source/Programs/UnrealBuildTool/UnrealBuildTool.csproj" \
     -c Development \
     -o "Engine/Binaries/DotNET/UnrealBuildTool" \
     --no-self-contained \
-    -p:GenerateDocumentationFile=false
-
-  if [[ $? -ne 0 ]]; then
-    msg 'Error: Failed to rebuild UnrealBuildTool.'
-    exit $?
+    -p:GenerateDocumentationFile=false; then
+    error 'Failed to rebuild UnrealBuildTool.'
+    return 1
   fi
 
   local _ue_buildgraph_arch_arg=()
@@ -459,7 +462,7 @@ build() {
     _ue_buildgraph_extra+=(-IgnoreNode="Build Derived Data Cache")
   fi
 
-  "Engine/Build/BatchFiles/RunUAT.sh" BuildGraph \
+  if ! "Engine/Build/BatchFiles/RunUAT.sh" BuildGraph \
     -target="Make Installed Build Linux" \
     -script=Engine/Build/InstalledEngineBuild.xml \
     -nosign \
@@ -473,11 +476,9 @@ build() {
     -set:WithIOS="${UE_WITH_IOS}" \
     -set:WithTVOS="${UE_WITH_TVOS}" \
     -set:GameConfigurations="${UE_GAME_CONFIGURATIONS}" \
-    -set:WithFullDebugInfo="${UE_WITH_FULL_DEBUG_INFO}"
-
-  if [[ $? -ne 0 ]]; then
-    msg "Error: Build failed; try searching the output for suspicious messages." >&2
-    return;
+    -set:WithFullDebugInfo="${UE_WITH_FULL_DEBUG_INFO}"; then
+    error "Build failed; try searching the output for suspicious messages."
+    return 1
   fi
 }
 
@@ -517,11 +518,17 @@ package() {
   install -Dm644 "${srcdir}/${pkgname}/LICENSE.md" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE.md"
   
   # Engine
-  ## Set to all permissions to prevent the engine from breaking itself; more elegant solutions might exist - suggest them if they can be automated here
-  ## Also, correct me if I package this improperly; I added Win64 support for the build in hopes of supporting cross-compilation
-  install -dm777 "${pkgdir}/${UE_INSTALL_DIR}/Engine"
-  
-  # Copy LocalBuilds to pkg...
+  ## 755, not 777: an Installed Build is redistributable and does NOT write back
+  ## into its own install tree at runtime (DDC, config and Saved data go to the
+  ## user's home / project dirs). World-writable /opt would let any local user
+  ## replace engine binaries another user then executes — a local privesc.
+  install -dm755 "${pkgdir}/${UE_INSTALL_DIR}/Engine"
+
+  # Ship ONLY the Installed Build (the redistributable engine produced by
+  # "Make Installed Build Linux"). It already contains the headers and static
+  # libs needed to compile C++ projects, so we deliberately do NOT also rsync
+  # the full source tree on top — that dragged in .git, Setup.sh's ThirdParty
+  # downloads, the SDK toolchain and DDC, inflating the package by ~100 GiB.
   rsync -a "${srcdir}/${pkgname}/LocalBuilds/Engine/Linux/" "${pkgdir}/${UE_INSTALL_DIR}/"
   if [[ -f "${srcdir}/${pkgname}/LocalBuilds/Engine/Linux/Engine/Binaries/Linux/UnrealEditor" ]]; then
     # Can never be too careful with recursive rm...
@@ -532,22 +539,17 @@ package() {
   # preventing the "unique build environment" error when building projects.
   printf '%s' "${pkgver}" | install -Dm644 /dev/stdin "${pkgdir}/${UE_INSTALL_DIR}/Engine/Build/InstalledBuild.txt"
 
-  # Copy the rest of it to pkg... Should we be overwriting LocalBuilds?
-  rsync -a --exclude='Intermediate/' "${srcdir}/${pkgname}/" "${pkgdir}/${UE_INSTALL_DIR}/"
-
-  # The BuildGraph staging copies the unpatched UBT DLL from CsTools into LocalBuilds,
-  # which then overwrites our patched build. Re-stamp both locations with the patched DLL.
-  local _ubtsrcdir="${srcdir}/${pkgname}/Engine/Source/Programs/UnrealBuildTool"
-  local _ubtpkgdir="${pkgdir}/${pkgname}/${UE_INSTALL_DIR}/Engine/Binaries/DotNET/UnrealBuildTool"
-
-  if [[ -x "$(find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'xbuild')" ]]; then
-    find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'xbuild' -exec chmod +x "{}" \;
+  # BuildGraph staging copies the unpatched UBT into the Installed Build, clobbering
+  # the patched UnrealBuildTool we rebuilt in build(). Re-stamp the installed copy.
+  local _ubtsrc="${srcdir}/${pkgname}/Engine/Binaries/DotNET/UnrealBuildTool"
+  local _ubtdst="${pkgdir}/${UE_INSTALL_DIR}/Engine/Binaries/DotNET/UnrealBuildTool"
+  if [[ -d "${_ubtsrc}" && -d "${_ubtdst}" ]]; then
+    rsync -a "${_ubtsrc}/" "${_ubtdst}/"
   fi
-  
-  if [[ -x "$(find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'mcs')" ]]; then
-    find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'mcs' -exec chmod +x "{}" \;
-  fi
-  
+
+  find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'xbuild' -exec chmod +x '{}' +
+  find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'mcs'    -exec chmod +x '{}' +
+
   ## Do this, in case the path doesn't exist for some reason
   mkdir -p "${pkgdir}/${UE_INSTALL_DIR}/Engine/Binaries/Android/"
   
