@@ -444,7 +444,10 @@ prepare() {
   # --- Download + extract toolchain (before Setup.sh) ---
   local _sdk_url="https://cdn.unrealengine.com/Toolchain_Linux/${_sdk_basename}.tar.gz"
   local _sdk_tar="${srcdir}/${_sdk_basename}.tar.gz"
-  local _sdk_dest="${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_x64/"
+  # Host toolchain dir is named by host arch (Linux_x64 / Linux_arm64). Use the
+  # arch we already detected from uname so an arm64 host extracts to the right
+  # place instead of a hardcoded x64 path.
+  local _sdk_dest="${srcdir}/${pkgname}/Engine/Extras/ThirdPartyNotUE/SDKs/HostLinux/Linux_${_ue_build_arch:-x64}/"
   if [[ ! -f "${_sdk_tar}" ]]; then
     msg "Downloading SDK toolchain from ${_sdk_url}"
     curl -fL --retry 3 -o "${_sdk_tar}" "${_sdk_url}" || {
