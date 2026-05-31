@@ -407,16 +407,28 @@ prepare() {
   # entirely.
   local _sdk_ver="${_ue_sdk_override}"
   if [[ -z "${_sdk_ver}" ]]; then
+    # Newer UE (5.1+) declares the toolchain in Engine/Config/Linux/Linux_SDK.json
+    # ("MainVersion"). Older UE (e.g. 5.0) has no such JSON and instead hardcodes
+    # it in UnrealBuildTool's LinuxPlatformSDK.cs GetMainVersion() as
+    #   return "v20_clang-13.0.1-centos7";
+    # Try the JSON first, then fall back to parsing the .cs return string.
     local _sdk_json="${srcdir}/${pkgname}/Engine/Config/Linux/Linux_SDK.json"
-    if [[ ! -f "${_sdk_json}" ]]; then
-      error "Cannot find ${_sdk_json}; cannot resolve SDK_VERSION."
+    local _sdk_cs="${srcdir}/${pkgname}/Engine/Source/Programs/UnrealBuildTool/Platform/Linux/LinuxPlatformSDK.cs"
+    if [[ -f "${_sdk_json}" ]]; then
+      _sdk_ver=$(grep -oE '"MainVersion"[[:space:]]*:[[:space:]]*"[^"]+"' "${_sdk_json}" | \
+                 sed -E 's/.*"MainVersion"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
+    elif [[ -f "${_sdk_cs}" ]]; then
+      # First `return "v<NN>_clang-...";` inside GetMainVersion(). Excludes the
+      # `// Example: v11_...` comment because grep matches the `return "` prefix.
+      _sdk_ver=$(grep -oE 'return[[:space:]]+"v[0-9]+_clang-[^"]+"' "${_sdk_cs}" | \
+                 head -1 | sed -E 's/.*"(v[0-9]+_clang-[^"]+)".*/\1/')
+    else
+      error "Cannot find ${_sdk_json} or ${_sdk_cs}; cannot resolve SDK_VERSION."
       exit 1
     fi
-    _sdk_ver=$(grep -oE '"MainVersion"[[:space:]]*:[[:space:]]*"[^"]+"' "${_sdk_json}" | \
-               sed -E 's/.*"MainVersion"[[:space:]]*:[[:space:]]*"([^"]+)".*/\1/')
   fi
   if [[ -z "${_sdk_ver}" ]]; then
-    error "Failed to parse MainVersion from ${_sdk_json:-Linux_SDK.json}; cannot resolve SDK_VERSION."
+    error "Failed to parse SDK_VERSION from Linux_SDK.json or LinuxPlatformSDK.cs."
     exit 1
   fi
   # Linux_SDK.json's MainVersion is the bare toolchain identifier
