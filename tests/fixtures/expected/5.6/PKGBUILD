@@ -489,21 +489,16 @@ build() {
     _ue_buildgraph_extra+=(-IgnoreNode="Build Derived Data Cache")
   fi
 
-  # -set:HostPlatformOnly=true is the single switch Epic intends for "build for
-  # this host only" — it flips the per-platform defaults (Win64/Mac/Android/iOS/
-  # TVOS) off in one go, matching the proven upstream unreal-engine PKGBUILD.
-  # We still pass the individual -set:With* below so /etc/makepkg.conf env vars
-  # (UE_WITH_*) can re-enable a specific cross-target on top of it. NOTE: on a
-  # Linux host HostPlatformOnly does NOT disable LinuxArm64 (HostPlatform is
-  # 'Linux'), so the explicit WithLinuxArm64 toggle is what actually skips the
-  # arm64 cross-compile.
+  # Platform selection matches the proven upstream unreal-engine PKGBUILD: pass
+  # each -set:With* explicitly (no HostPlatformOnly). The per-platform defaults
+  # come from the UE_WITH_* env block above; WithLinuxArm64 is the one we add on
+  # top of upstream to skip the arm64 cross-compile by default.
   if ! "Engine/Build/BatchFiles/RunUAT.sh" BuildGraph \
     -target="Make Installed Build Linux" \
     -script=Engine/Build/InstalledEngineBuild.xml \
     -nosign \
     "${_ue_buildgraph_arch_arg[@]}" \
     "${_ue_buildgraph_extra[@]}" \
-    -set:HostPlatformOnly=true \
     -set:WithDDC="${UE_WITH_DDC}" \
     -set:WithLinux="${UE_WITH_LINUX}" \
     -set:WithLinuxArm64="${UE_WITH_LINUX_ARM64}" \
