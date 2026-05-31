@@ -90,6 +90,15 @@ if [[ "${UE_WITH_LINUX}" != "true" && "${UE_WITH_LINUX}" != "false" ]]; then
   export UE_WITH_LINUX=true
 fi
 
+# Linux AArch64 (arm64) target. InstalledEngineBuild.xml defaults this ON
+# (DefaultWithLinuxArm64=true), which cross-compiles a full second arm64 target
+# on an x86_64 host: it roughly doubles build time and package size, and host
+# strip/fakeroot can't process the arm64 .a/.debug files (harmless warnings).
+# Default false; set UE_WITH_LINUX_ARM64=true if you actually ship to arm64 Linux.
+if [[ "${UE_WITH_LINUX_ARM64}" != "true" && "${UE_WITH_LINUX_ARM64}" != "false" ]]; then
+  export UE_WITH_LINUX_ARM64=false
+fi
+
 if [[ "${UE_WITH_MAC}" != "true" && "${UE_WITH_MAC}" != "false" ]]; then
   export UE_WITH_MAC=false
 fi
@@ -488,6 +497,7 @@ build() {
     "${_ue_buildgraph_extra[@]}" \
     -set:WithDDC="${UE_WITH_DDC}" \
     -set:WithLinux="${UE_WITH_LINUX}" \
+    -set:WithLinuxArm64="${UE_WITH_LINUX_ARM64}" \
     -set:WithWin64="${UE_WITH_WIN64}" \
     -set:WithMac="${UE_WITH_MAC}" \
     -set:WithAndroid="${UE_WITH_ANDROID}" \
