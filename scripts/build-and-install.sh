@@ -50,9 +50,13 @@ cd "${PKGDIR}"
 echo "[build-and-install] caching sudo upfront. Type your password once:"
 sudo -v
 
-# Refresh the sudo timestamp every 50s. Killed by the EXIT trap.
-( while true; do
-    sudo -nv 2>/dev/null || exit 0
+# Refresh the sudo timestamp every 50s so both makepkg sudo points (the -s
+# syncdeps install at the start and the -i package install at the end) run
+# without re-prompting. Don't exit on a single transient miss — just keep
+# trying; only stop when the parent script is gone.
+PARENT=$$
+( while kill -0 "${PARENT}" 2>/dev/null; do
+    sudo -nv 2>/dev/null || true
     sleep 50
   done
 ) &
