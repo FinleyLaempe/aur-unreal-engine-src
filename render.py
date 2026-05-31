@@ -278,7 +278,7 @@ def _build_srcinfo(
             'fake-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects',
             'ttf-ms-fonts: Font support for "demo/free/sample/example/tutorial" projects',
         ],
-        "options": ["staticlibs"],
+        "options": ["staticlibs", "!debug"],
         "source": source_filenames,
         "sha256sums": source_hashes,
         "pkgname": pkgname,

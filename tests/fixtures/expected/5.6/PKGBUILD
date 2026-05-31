@@ -48,9 +48,14 @@ sha256sums=('SKIP'
             'SKIP')
 # Not sure if compiling Unreal with LTO is legal? Lot's of different proprietary software goes into Unreal
 # 'staticlibs' kept: the installed engine ships .a files needed to link C++ projects.
-# 'strip' left ON (no '!strip'): UE5 debug symbols add tens of GiB to the package;
-# stripping is slow and noisy but is the single biggest size win.
-options=('staticlibs')
+# 'strip' left ON (no '!strip'): UE5 debug symbols add tens of GiB; stripping is the
+# single biggest size win.
+# '!debug': do NOT emit a separate -debug subpackage. Its files live under
+# /usr/lib/debug/.build-id/<hash> keyed by content hash, so two minors that share
+# any identical object collide on install (e.g. 5.4-debug vs 5.7-debug) — which
+# would break parallel installation of multiple unreal-engine-src-5.X packages.
+# We strip and discard the symbols instead of packaging them.
+options=('staticlibs' '!debug')
 
 # Default engine installation directory. Can be useful if you do not have a lot of space on the default storage drive
 # DON'T put a "/" at the start of the path
