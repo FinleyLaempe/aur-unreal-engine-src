@@ -594,8 +594,7 @@ package() {
     rsync -a "${_ubtsrc}/" "${_ubtdst}/"
   fi
 
-  find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'xbuild' -exec chmod +x '{}' +
-  find "${pkgdir}/${UE_INSTALL_DIR}" -type f -iname 'mcs'    -exec chmod +x '{}' +
+  find "${pkgdir}/${UE_INSTALL_DIR}" -type f \( -iname 'xbuild' -o -iname 'mcs' \) -exec chmod +x '{}' +
 
   ## Do this, in case the path doesn't exist for some reason
   mkdir -p "${pkgdir}/${UE_INSTALL_DIR}/Engine/Binaries/Android/"
