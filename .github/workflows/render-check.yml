@@ -11,18 +11,23 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        minor: ["5.0", "5.1", "5.2", "5.3", "5.4", "5.5", "5.6"]
+        # 5.9 has no upstream release yet: exercises the "newest upstream patches" fallback.
+        minor: ["5.4", "5.5", "5.6", "5.7", "5.8", "5.9"]
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5
         with:
           python-version: "3.11"
+      - name: Clone upstream AUR unreal-engine
+        run: git clone https://aur.archlinux.org/unreal-engine.git upstream
       - name: Render minor ${{ matrix.minor }}
         run: |
           python render.py "${{ matrix.minor }}" \
             --pkgver "${{ matrix.minor }}.0" \
             --template-sha "ci" \
+            --upstream upstream \
             --out "out/${{ matrix.minor }}"
+          bash -n "out/${{ matrix.minor }}/PKGBUILD"
       - name: Upload rendered package
         uses: actions/upload-artifact@v4
         with:
@@ -35,10 +40,12 @@ jobs:
     container: archlinux:latest
     steps:
       - uses: actions/checkout@v4
-      - name: Install namcap + python
-        run: pacman -Sy --noconfirm namcap python
-      - name: Render 5.6 (only minor with patches)
-        run: python render.py 5.6 --pkgver 5.6.1 --template-sha ci --out out/5.6
+      - name: Install namcap + python + git
+        run: pacman -Sy --noconfirm namcap python git
+      - name: Render 5.8 (newest upstream patch set)
+        run: |
+          git clone https://aur.archlinux.org/unreal-engine.git upstream
+          python render.py 5.8 --pkgver 5.8.3 --template-sha ci --upstream upstream --out out/5.8
       - name: Run namcap
-        working-directory: out/5.6
+        working-directory: out/5.8
         run: namcap PKGBUILD || true   # warnings tolerated; failures surface in log
