@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from render import render
+from render import UpstreamSnapshot, render
 
 GOLDEN_FILENAMES = [
     "PKGBUILD",
@@ -17,13 +17,22 @@ GOLDEN_FILENAMES = [
 
 @pytest.mark.parametrize("filename", GOLDEN_FILENAMES)
 def test_render_5_6_matches_golden(
-    repo_root: Path, filename: str
+    repo_root: Path, filename: str, upstream_patches_5_6: dict[str, bytes]
 ) -> None:
+    # Fixed snapshot (no git) so the golden files don't depend on commit hashes.
+    upstream = UpstreamSnapshot(
+        minor="5.6",
+        commit="6d6c25d0000000000000000000000000000000000",
+        pkgver="5.6.1",
+        author="Alexis Belmonte",
+        patches=upstream_patches_5_6,
+    )
     rendered = render(
         repo=repo_root,
         minor="5.6",
         pkgver="5.6.1",
         template_sha="golden",
+        upstream=upstream,
     )
     expected = (
         repo_root / "tests" / "fixtures" / "expected" / "5.6" / filename

@@ -1,7 +1,10 @@
 """Renderer for per-minor UE5 AUR templates.
 
-Public surface (must match the JS port embedded in n8n Code node 7):
-- render(repo: Path, minor: str, pkgver: str, template_sha: str) -> RenderedFiles
+Public surface (must match the JS port in the n8n "Decide If Update Needed" and
+"Generate PKGBUILD and SRCINFO" Code nodes, and the "Resolve Upstream" script):
+- resolve_upstream(upstream_dir: Path) -> dict[str, UpstreamSnapshot]
+- pick_snapshot(snapshots, minor: str) -> UpstreamSnapshot
+- render(repo, minor, pkgver, template_sha, upstream) -> RenderedFiles
 - load_minor_meta(minor_dir: Path) -> MinorMeta
 """
 
@@ -10,6 +13,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import re
+import subprocess
 import sys
 import tomllib
 from dataclasses import dataclass, field
@@ -35,6 +39,107 @@ def load_minor_meta(minor_dir: Path) -> MinorMeta:
         pkgrel=int(raw.get("pkgrel", 1)),
         patches=list(raw.get("patches", [])),
         notes=raw.get("notes", ""),
+    )
+
+
+@dataclass(frozen=True)
+class UpstreamSnapshot:
+    """Newest commit of the upstream AUR `unreal-engine` package for one minor."""
+
+    minor: str
+    commit: str
+    pkgver: str
+    author: str
+    patches: dict[str, bytes]
+
+
+_UPSTREAM_PKGVER_RE = re.compile(r"^pkgver=(\d+\.\d+\.\d+\S*)$", re.MULTILINE)
+
+
+def _git(upstream_dir: Path, *args: str) -> bytes:
+    return subprocess.run(
+        ["git", "-C", str(upstream_dir), *args], check=True, capture_output=True
+    ).stdout
+
+
+def resolve_upstream(upstream_dir: Path) -> dict[str, UpstreamSnapshot]:
+    """Map each UE 5.x minor to the newest upstream commit that packaged it.
+
+    Walks the commits touching PKGBUILD newest-first; the first commit whose
+    pkgver is 5.<minor>.* wins for that minor. Patches are every *.patch file
+    in that commit's tree.
+    """
+    log = _git(upstream_dir, "log", "--format=%H%x09%an", "--", "PKGBUILD")
+    snapshots: dict[str, UpstreamSnapshot] = {}
+    for line in log.decode("utf-8").splitlines():
+        commit, author = line.split("\t", 1)
+        pkgbuild = _git(upstream_dir, "show", f"{commit}:PKGBUILD").decode(
+            "utf-8", "replace"
+        )
+        match = _UPSTREAM_PKGVER_RE.search(pkgbuild)
+        if not match:
+            continue
+        pkgver = match.group(1)
+        major, minor_num = pkgver.split(".")[:2]
+        if major != "5":
+            continue
+        minor = f"{major}.{minor_num}"
+        if minor in snapshots:
+            continue
+        names = sorted(
+            n
+            for n in _git(upstream_dir, "ls-tree", "--name-only", commit)
+            .decode("utf-8")
+            .splitlines()
+            if n.endswith(".patch")
+        )
+        snapshots[minor] = UpstreamSnapshot(
+            minor=minor,
+            commit=commit,
+            pkgver=pkgver,
+            author=author,
+            patches={n: _git(upstream_dir, "show", f"{commit}:{n}") for n in names},
+        )
+    return snapshots
+
+
+def _minor_key(minor: str) -> tuple[int, int]:
+    major, minor_num = minor.split(".")
+    return int(major), int(minor_num)
+
+
+def pick_snapshot(
+    snapshots: dict[str, UpstreamSnapshot], minor: str
+) -> UpstreamSnapshot:
+    """Newest snapshot whose minor is <= the requested one, else the oldest.
+
+    So a minor upstream never packaged (e.g. a fresh 5.9) uses upstream's
+    latest patches until upstream catches up.
+    """
+    if not snapshots:
+        raise ValueError("upstream has no 5.x snapshots")
+    ordered = sorted(snapshots.values(), key=lambda s: _minor_key(s.minor))
+    eligible = [s for s in ordered if _minor_key(s.minor) <= _minor_key(minor)]
+    return eligible[-1] if eligible else ordered[0]
+
+
+def load_upstream_ignore(repo: Path) -> set[str]:
+    """Upstream patch filenames to leave out (one per line, '#' comments)."""
+    path = repo / "upstream-ignore.txt"
+    if not path.is_file():
+        return set()
+    names = set()
+    for line in path.read_text(encoding="utf-8").splitlines():
+        line = line.split("#", 1)[0].strip()
+        if line:
+            names.add(line)
+    return names
+
+
+def upstream_credit(snapshot: UpstreamSnapshot) -> str:
+    return (
+        f"Patches in this package: upstream commit {snapshot.commit[:7]} "
+        f"({snapshot.pkgver}, {snapshot.author})"
     )
 
 
@@ -144,15 +249,19 @@ def _read_text(path: Path) -> str:
 
 
 def render(
-    *, repo: Path, minor: str, pkgver: str, template_sha: str
+    *,
+    repo: Path,
+    minor: str,
+    pkgver: str,
+    template_sha: str,
+    upstream: UpstreamSnapshot,
 ) -> RenderedFiles:
     minor_dir = repo / "templates" / minor
     common_dir = repo / "templates" / "_common"
     try:
         meta = load_minor_meta(minor_dir)
     except FileNotFoundError:
-        # New minor not yet scaffolded — render with defaults (no patches,
-        # empty SDK override). Matches the n8n Generate node's fallback.
+        # templates/<minor>/ is an optional override; most minors have none.
         meta = MinorMeta(sdk_version_override="", pkgrel=1, patches=[], notes="")
     values = derive_values(
         minor=minor,
@@ -160,6 +269,7 @@ def render(
         pkgrel=meta.pkgrel,
         sdk_override=meta.sdk_version_override,
     )
+    values["UPSTREAM_CREDIT"] = upstream_credit(upstream)
 
     # Output filenames derived from values
     launcher_name = f"{values['LAUNCHER_BIN']}.sh"
@@ -182,9 +292,18 @@ def render(
     # Binary asset, copied verbatim with renamed filename
     files[icon_name] = _read_bytes(common_dir / "ue5editor.svg")
 
-    # Per-minor patches (copied verbatim, included in source=())
+    # Upstream patches for this minor, then local per-minor extras (all copied
+    # verbatim, included in source=())
     patch_filenames: list[str] = []
+    ignored = load_upstream_ignore(repo)
+    for patch, content in sorted(upstream.patches.items()):
+        if patch in ignored:
+            continue
+        files[patch] = content
+        patch_filenames.append(patch)
     for patch in meta.patches:
+        if patch in files:
+            raise ValueError(f"local patch collides with upstream patch: {patch}")
         patch_path = minor_dir / "patches" / patch
         if not patch_path.is_file():
             raise FileNotFoundError(
@@ -304,22 +423,31 @@ def main(argv: list[str] | None = None) -> int:
         help="Template repo root (default: dir containing render.py).",
     )
     parser.add_argument(
+        "--upstream",
+        type=Path,
+        required=True,
+        help="Clone of https://aur.archlinux.org/unreal-engine.git (patch source).",
+    )
+    parser.add_argument(
         "--out", type=Path, required=True, help="Output directory."
     )
     args = parser.parse_args(argv)
 
+    snapshot = pick_snapshot(resolve_upstream(args.upstream), args.minor)
     rendered = render(
         repo=args.repo,
         minor=args.minor,
         pkgver=args.pkgver,
         template_sha=args.template_sha,
+        upstream=snapshot,
     )
     args.out.mkdir(parents=True, exist_ok=True)
     for name, content in rendered.files.items():
         (args.out / name).write_bytes(content)
     print(
         f"Rendered {rendered.pkgname}-{rendered.pkgver}-{rendered.pkgrel} "
-        f"({len(rendered.files)} files) -> {args.out}"
+        f"({len(rendered.files)} files, patches from upstream "
+        f"{snapshot.commit[:7]} / {snapshot.pkgver}) -> {args.out}"
     )
     return 0
 

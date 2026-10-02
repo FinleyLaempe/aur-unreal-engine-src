@@ -1,0 +1,6 @@
+# Upstream (aur.archlinux.org/unreal-engine) patches NOT copied into our packages.
+# One filename per line. Used by render.py and the n8n Generate node.
+
+# Opt-in in upstream's 5.0-5.5 PKGBUILDs (`_use_system_clang=false` by default),
+# but our prepare() applies every *.patch, so it would be forced on.
+use_system_clang.patch

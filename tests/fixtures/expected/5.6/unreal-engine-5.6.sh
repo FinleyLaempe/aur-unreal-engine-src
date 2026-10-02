@@ -1,7 +1,8 @@
 #! /usr/bin/bash
 
 # Launcher for unreal-engine-src-5.6 (Unreal Engine 5.6).
-# Inspired by Alexis Belmonte's upstream unreal-engine.sh.
+# Copied from Alexis Belmonte's unreal-engine.sh in the `unreal-engine` AUR package,
+# adapted per minor.
 
 if [ "$(id -u)" -eq 0 ]; then
     echo "ERROR: Run this as an unprivileged user; not as root."

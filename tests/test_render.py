@@ -7,24 +7,16 @@ import pytest
 from render import MinorMeta, load_minor_meta
 
 
-def test_load_minor_meta_5_6(templates_dir: Path) -> None:
-    meta = load_minor_meta(templates_dir / "5.6")
-    assert meta == MinorMeta(
-        sdk_version_override="",
-        pkgrel=1,
-        patches=[
-            "0001-override-shared-target-build.patch",
-            "0002-suppress-scriptbuild-warnings-for-5-6.patch",
-        ],
-        notes="5.6.x patches inherited from upstream maintainer (Alexis Belmonte). Verified against 5.6.1-release.",
+def test_load_minor_meta_reads_override(tmp_path: Path) -> None:
+    minor_dir = tmp_path / "5.6"
+    minor_dir.mkdir()
+    (minor_dir / "meta.toml").write_text(
+        'sdk_version_override = "v26"\npkgrel = 2\npatches = ["9001-local.patch"]\nnotes = "n"\n'
     )
-
-
-def test_load_minor_meta_5_0_empty_patches(templates_dir: Path) -> None:
-    meta = load_minor_meta(templates_dir / "5.0")
-    assert meta.patches == []
-    assert meta.pkgrel == 1
-    assert meta.sdk_version_override == ""
+    meta = load_minor_meta(minor_dir)
+    assert meta == MinorMeta(
+        sdk_version_override="v26", pkgrel=2, patches=["9001-local.patch"], notes="n"
+    )
 
 
 def test_load_minor_meta_missing_dir(tmp_path: Path) -> None:
@@ -155,20 +147,88 @@ def test_generate_srcinfo_minimal() -> None:
     assert out == expected
 
 
-from render import RenderedFiles, render
+from render import (
+    RenderedFiles,
+    UpstreamSnapshot,
+    pick_snapshot,
+    render,
+    resolve_upstream,
+    upstream_credit,
+)
+
+
+def test_resolve_upstream_newest_commit_per_minor(fake_upstream) -> None:
+    snaps = resolve_upstream(fake_upstream.path)
+    assert sorted(snaps) == ["5.4", "5.6", "5.8"]
+    assert snaps["5.6"].commit == fake_upstream.commits["v5.6.1"]
+    assert snaps["5.6"].pkgver == "5.6.1"
+    assert snaps["5.6"].author == "Alexis Belmonte"
+    assert sorted(snaps["5.6"].patches) == [
+        "0001-override-shared-target-build.patch",
+        "0002-suppress-scriptbuild-warnings-for-5-6.patch",
+    ]
+    assert snaps["5.4"].author == "Neko-san"
+    assert list(snaps["5.4"].patches) == ["use_system_clang.patch"]
+
+
+def test_resolve_upstream_ignores_commits_not_touching_pkgbuild(fake_upstream) -> None:
+    snaps = resolve_upstream(fake_upstream.path)
+    assert snaps["5.8"].commit == fake_upstream.commits["v5.8"]
+    assert snaps["5.8"].patches == {
+        "0001-override-shared-target-build.patch": b"new 0001\n",
+        "0003-disable-lumen.patch": b"lumen\n",
+    }
+
+
+def _snap(minor: str) -> UpstreamSnapshot:
+    return UpstreamSnapshot(
+        minor=minor, commit=minor * 8, pkgver=f"{minor}.0", author="A", patches={}
+    )
+
+
+def test_pick_snapshot_exact_match() -> None:
+    snaps = {m: _snap(m) for m in ("5.4", "5.6", "5.8")}
+    assert pick_snapshot(snaps, "5.6").minor == "5.6"
+
+
+def test_pick_snapshot_unknown_new_minor_uses_newest() -> None:
+    snaps = {m: _snap(m) for m in ("5.4", "5.6", "5.8")}
+    assert pick_snapshot(snaps, "5.9").minor == "5.8"
+    assert pick_snapshot(snaps, "5.10").minor == "5.8"
+
+
+def test_pick_snapshot_gap_uses_nearest_older() -> None:
+    snaps = {m: _snap(m) for m in ("5.4", "5.6", "5.8")}
+    assert pick_snapshot(snaps, "5.7").minor == "5.6"
+
+
+def test_pick_snapshot_older_than_all_uses_oldest() -> None:
+    snaps = {m: _snap(m) for m in ("5.4", "5.6")}
+    assert pick_snapshot(snaps, "5.2").minor == "5.4"
+
+
+def test_upstream_credit_names_commit_version_and_author() -> None:
+    snap = UpstreamSnapshot(
+        minor="5.8", commit="dc9aa87e7b82", pkgver="5.8.2", author="Alexis Belmonte", patches={}
+    )
+    assert upstream_credit(snap) == (
+        "Patches in this package: upstream commit dc9aa87 (5.8.2, Alexis Belmonte)"
+    )
 
 
 def test_render_5_6_produces_expected_filenames(
-    repo_root: Path, tmp_path: Path
+    repo_root: Path, fake_upstream
 ) -> None:
     # Caller-supplied template_sha is opaque to render() — it doesn't go into
     # output files, just gets passed through state. This test confirms the
     # function shape, not output contents (golden test handles that).
+    snap = pick_snapshot(resolve_upstream(fake_upstream.path), "5.6")
     out = render(
         repo=repo_root,
         minor="5.6",
         pkgver="5.6.1",
         template_sha="deadbeefcafe",
+        upstream=snap,
     )
     assert isinstance(out, RenderedFiles)
     assert out.pkgname == "unreal-engine-src-5.6"
@@ -188,24 +248,59 @@ def test_render_5_6_produces_expected_filenames(
         assert isinstance(content, bytes), f"{name} content not bytes"
 
 
-def test_render_5_0_omits_patches_and_renames_assets(repo_root: Path) -> None:
+def test_render_skips_ignored_upstream_patch(repo_root: Path, fake_upstream) -> None:
+    snap = pick_snapshot(resolve_upstream(fake_upstream.path), "5.4")
     out = render(
-        repo=repo_root, minor="5.0", pkgver="5.0.3", template_sha="abc"
+        repo=repo_root, minor="5.4", pkgver="5.4.4", template_sha="abc", upstream=snap
     )
     names = set(out.files.keys())
-    assert "unreal-engine-5.0.sh" in names
-    assert "com.unrealengine.UE5_0Editor.desktop" in names
-    assert "unreal-engine-src-5.0-pacman-cache.hook" in names
-    assert "ue5_0editor.svg" in names
-    # No patches for 5.0 (meta.toml has patches=[])
+    assert "unreal-engine-5.4.sh" in names
+    assert "com.unrealengine.UE5_4Editor.desktop" in names
+    assert "unreal-engine-src-5.4-pacman-cache.hook" in names
+    assert "ue5_4editor.svg" in names
+    # use_system_clang.patch is listed in upstream-ignore.txt
     assert not any(n.endswith(".patch") for n in names)
+    assert b"use_system_clang" not in out.files["PKGBUILD"]
+
+
+def test_render_new_minor_uses_newest_upstream_patches(
+    repo_root: Path, fake_upstream
+) -> None:
+    snap = pick_snapshot(resolve_upstream(fake_upstream.path), "5.9")
+    out = render(
+        repo=repo_root, minor="5.9", pkgver="5.9.0", template_sha="abc", upstream=snap
+    )
+    assert out.files["0003-disable-lumen.patch"] == b"lumen\n"
+    pkgbuild = out.files["PKGBUILD"].decode()
+    assert "pkgname=unreal-engine-src-5.9" in pkgbuild
+    short = fake_upstream.commits["v5.8"][:7]
+    assert f"upstream commit {short} (5.8.2, Alexis Belmonte)" in pkgbuild
+
+
+def test_render_adds_local_override_patches(tmp_path: Path, repo_root: Path) -> None:
+    import shutil
+
+    repo = tmp_path / "tpl"
+    shutil.copytree(repo_root, repo, ignore=shutil.ignore_patterns("venv", ".git", "tests"))
+    (repo / "templates" / "5.8" / "patches").mkdir(parents=True)
+    (repo / "templates" / "5.8" / "meta.toml").write_text('patches = ["9001-local.patch"]\n')
+    (repo / "templates" / "5.8" / "patches" / "9001-local.patch").write_bytes(b"local\n")
+    snap = UpstreamSnapshot(
+        minor="5.8", commit="c" * 40, pkgver="5.8.2", author="A", patches={"0001-a.patch": b"a\n"}
+    )
+    out = render(repo=repo, minor="5.8", pkgver="5.8.3", template_sha="x", upstream=snap)
+    pkgbuild = out.files["PKGBUILD"].decode()
+    assert pkgbuild.index("'0001-a.patch'") < pkgbuild.index("'9001-local.patch'")
+    assert out.files["9001-local.patch"] == b"local\n"
 
 
 import subprocess
 import sys
 
 
-def test_cli_writes_output_directory(repo_root: Path, tmp_path: Path) -> None:
+def test_cli_writes_output_directory(
+    repo_root: Path, tmp_path: Path, fake_upstream
+) -> None:
     out_dir = tmp_path / "out-5.6"
     result = subprocess.run(
         [
@@ -216,6 +311,8 @@ def test_cli_writes_output_directory(repo_root: Path, tmp_path: Path) -> None:
             "5.6.1",
             "--template-sha",
             "testsha",
+            "--upstream",
+            str(fake_upstream.path),
             "--out",
             str(out_dir),
         ],
@@ -225,3 +322,4 @@ def test_cli_writes_output_directory(repo_root: Path, tmp_path: Path) -> None:
     assert result.returncode == 0, result.stderr
     assert (out_dir / "PKGBUILD").is_file()
     assert (out_dir / ".SRCINFO").is_file()
+    assert (out_dir / "0002-suppress-scriptbuild-warnings-for-5-6.patch").is_file()

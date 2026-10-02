@@ -1,7 +1,19 @@
-# Inspired by Alexis Belmonte's <alexbelm48@gmail.com> upstream `unreal-engine` AUR
-# Per-minor parallel-install variant. Templates auto-published from:
-#   https://github.com/FinleyLaempe/aur-unreal-engine-src
 # Maintainer: Finley Laempe <finley.laempe@web.de>
+# Contributor: Alexis Belmonte <alexbelm48@gmail.com>
+# Contributor: Neko-san <nekoNexus at protonmail dot ch>
+# Contributor: Dylan Ferris <dylan@psilly.com>
+# Contributor: Michael Lojkovic <mikelojkovic@gmail.com>
+# Contributor: Shatur95 <genaloner@gmail.com>
+# Contributor: slx
+#
+# Based on the `unreal-engine` AUR package (https://aur.archlinux.org/packages/unreal-engine),
+# maintained by Alexis Belmonte. The build logic in this PKGBUILD, the launcher, desktop
+# entry, pacman hook and icon are copied from it, and its patches are taken automatically
+# from its newest release of each Unreal Engine version.
+# Patches in this package: upstream commit 6d6c25d (5.6.1, Alexis Belmonte)
+#
+# Per-minor parallel-install variant, published from:
+#   https://github.com/FinleyLaempe/aur-unreal-engine-src
 
 # The source is about 200 MiB, with an extra ~11 GiB of dependencies downloaded in Setup.sh, and may take several hours to compile.
 # If you want additional options, there are switches below.
@@ -271,6 +283,15 @@ esac
 # Causes a SEGV during derived data cache build if not set
 export DOTNET_SYSTEM_NET_HTTP_USESOCKETSHTTPHANDLER=0
 
+# Ported from upstream (5.8.2): the Roslyn compiler server coordinates through named
+# mutexes backed by lock files under ${TMPDIR}/.dotnet/shm; concurrent MSBuild nodes
+# racing on them intermittently fail with "MSB3883: ReleaseMutex failed". Compiling
+# in-process sidesteps the server (MSBuild reads this as a global property, so it
+# also covers BuildGraph/UAT), and disabling node reuse stops stale nodes outliving
+# makepkg.
+export UseSharedCompilation=false
+export MSBUILDDISABLENODEREUSE=1
+
 prepare() {
   # --- Probe GitHub access (SSH first, HTTPS fallback) ---
   local _ue_remote_ssh="git@github.com:EpicGames/UnrealEngine.git"
@@ -367,7 +388,7 @@ prepare() {
     fi
   fi
 
-  # --- Apply per-minor patches (continues on failure per upstream behaviour) ---
+  # --- Apply patches (upstream's for this minor + local extras; continues on failure per upstream behaviour) ---
   for patch_file in ../*.patch; do
     [[ -f "${patch_file}" ]] || continue
     msg "Applying ${patch_file}"
