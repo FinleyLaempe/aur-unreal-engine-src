@@ -140,19 +140,15 @@ these via env vars in `/etc/makepkg.conf` if you need them.
 
 ## Status
 
-Renderer, templates, CI and the n8n workflow are in place. Once live, the
-workflow runs daily at 06:00 and republishes whatever changed. To go live:
+Live since 2026-10-02: `unreal-engine-src-5.4` to `-5.8` are on the AUR, and
+the n8n workflow runs daily at 06:00. It pushes from an `aur-bot` user on the
+n8n server, set up with `scripts/setup-push-host.sh`.
 
-1. On the n8n server, as root, set up the push host:
-   ```sh
-   bash <(curl -fsSL https://raw.githubusercontent.com/FinleyLaempe/aur-unreal-engine-src/master/scripts/setup-push-host.sh)
-   ```
-   It creates an `aur-bot` user with git + curl and prints two things: a public
-   key to add to your AUR account (on a new line, next to your existing key) and
-   the values for an n8n "SSH Private Key" credential.
-2. Create that credential in n8n (name it `AUR push host`).
-3. Select it on the `Resolve Upstream` and `Push to AUR` nodes, run once with
-   `DRY_RUN` on (the `Config` node; a dry run does not write state), then set
-   `DRY_RUN` to `false` and activate the workflow.
+A minor gets a new pkgrel only when files that end up in the package change
+(`PKGBUILD.tmpl`, `templates/`, `upstream-ignore.txt`) or its upstream patch
+snapshot changes, so README/tests/CI commits don't trigger rebuilds.
+
+To test changes without publishing, set `DRY_RUN` to `true` in the workflow's
+`Config` node (a dry run neither pushes nor writes state).
 
 Email alerts for failed pushes are planned but not built yet.
