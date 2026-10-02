@@ -13,6 +13,7 @@
 set -euo pipefail
 
 BOT_USER="${BOT_USER:-aur-bot}"
+SHOW_PRIVATE_KEY="${SHOW_PRIVATE_KEY:-1}"
 
 if [[ "$(id -u)" -ne 0 ]]; then
   echo "Run this as root." >&2
@@ -69,9 +70,16 @@ chmod 644 "${AUR_KEY}.pub" "${LOGIN_KEY}.pub"
 
 # --- what n8n should use as Host ---
 HOST_HINT="the LAN address n8n uses to reach this machine"
-if command -v docker >/dev/null && N8N_CTR="$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | awk 'tolower($0) ~ /n8n/ {print $1; exit}')" && [[ -n "${N8N_CTR}" ]]; then
+if ps -eo args 2>/dev/null | grep -qE '(^|/)n8n start'; then
+  HOST_HINT="127.0.0.1   (n8n runs natively on this machine)"
+elif command -v docker >/dev/null && N8N_CTR="$(docker ps --format '{{.Names}} {{.Image}}' 2>/dev/null | awk 'tolower($0) ~ /n8n/ {print $1; exit}')" && [[ -n "${N8N_CTR}" ]]; then
   GW="$(docker inspect -f '{{range .NetworkSettings.Networks}}{{.Gateway}} {{end}}' "${N8N_CTR}" 2>/dev/null | awk '{print $1}')"
   [[ -n "${GW}" ]] && HOST_HINT="${GW}   (n8n runs in Docker container '${N8N_CTR}'; this is its gateway to this host)"
+fi
+if [[ "${SHOW_PRIVATE_KEY}" == "1" ]]; then
+  PRIVATE_KEY_TEXT="$(cat "${LOGIN_KEY}")"
+else
+  PRIVATE_KEY_TEXT="(not shown) Print it on this machine with:  cat ${LOGIN_KEY}"
 fi
 SSHD_NOTE=""
 if command -v ss >/dev/null && ! ss -ltn 2>/dev/null | grep -qE '[:.]22[[:space:]]'; then
@@ -97,7 +105,7 @@ $(cat "${AUR_KEY}.pub")
       Private Key: everything below, including the BEGIN/END lines
       Passphrase:  (leave empty)
 ================================================================================
-$(cat "${LOGIN_KEY}")
+${PRIVATE_KEY_TEXT}
 
 ================================================================================
  3. Check (after step 1):
