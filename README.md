@@ -60,6 +60,7 @@ templates/
   <minor>/                 # optional per-minor override (meta.toml, patches/)
 scripts/
   resolve-upstream.sh      # upstream snapshot per minor, as JSON (run by n8n)
+  setup-push-host.sh       # one-time setup of the machine n8n pushes to the AUR from
   build-and-install.sh     # local multi-hour build + install helper
 tests/                     # pytest, golden files for 5.6, resolver parity test
 .github/workflows/         # CI: pytest + render-every-minor + namcap
@@ -139,13 +140,19 @@ these via env vars in `/etc/makepkg.conf` if you need them.
 
 ## Status
 
-Renderer, templates, CI and the n8n workflow are in place. Before the first
-real publish:
+Renderer, templates, CI and the n8n workflow are in place. Once live, the
+workflow runs daily at 06:00 and republishes whatever changed. To go live:
 
-1. Add an SSH credential in n8n (a host with `git`, `curl` and a key registered
-   on your AUR account) to the `Resolve Upstream` and `Push to AUR` nodes.
-2. Run the workflow once with `DRY_RUN` on (the `Config` node, default `true`)
-   and check the output. A dry run does not write state.
-3. Set `DRY_RUN` to `false`, run it, then publish (activate) the workflow.
+1. On the n8n server, as root, set up the push host:
+   ```sh
+   bash <(curl -fsSL https://raw.githubusercontent.com/FinleyLaempe/aur-unreal-engine-src/master/scripts/setup-push-host.sh)
+   ```
+   It creates an `aur-bot` user with git + curl and prints two things: a public
+   key to add to your AUR account (on a new line, next to your existing key) and
+   the values for an n8n "SSH Private Key" credential.
+2. Create that credential in n8n (name it `AUR push host`).
+3. Select it on the `Resolve Upstream` and `Push to AUR` nodes, run once with
+   `DRY_RUN` on (the `Config` node; a dry run does not write state), then set
+   `DRY_RUN` to `false` and activate the workflow.
 
 Email alerts for failed pushes are planned but not built yet.
